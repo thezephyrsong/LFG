@@ -1,5 +1,7 @@
 # Looking For Group - a LFG Addon for Project Epoch
 
+**NOTE: I no longer play on Project Epoch and this will not recieve any further updates, feel free to fork this repo an continue development.**
+
 [Download Link](https://github.com/Bennylavaa/LFG/archive/refs/heads/main.zip)
 
 Important note: Remove -main when extracting into your interface/addons folder and fully restart your client after each update!
