@@ -3932,7 +3932,19 @@ end
 function sayNotReady()
     if LFG.inGroup and GetNumPartyMembers() + 1 == LFG.groupSizeMax then
         _G['LFGGroupReady']:Hide()
-        local myRole = LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole
+        
+        -- Safely resolve the dungeon name
+        local dName = LFG.dungeonNameFromCode(LFG.groupFullCode)
+        local dungeonData = dName and LFG.dungeons[dName]
+        
+        -- Prevent the crash if the dungeon code isn't mapped in the table
+        if not dungeonData then
+            print("LFG Debug: Missing dungeon data for code: " .. tostring(LFG.groupFullCode))
+            return -- Exit the function safely
+        end
+        
+        local myRole = dungeonData.myRole
+        
         SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. myRole, "PARTY")
         LFG.SetSingleRole(myRole)
         LFG.GetPossibleRoles()
