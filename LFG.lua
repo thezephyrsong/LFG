@@ -3106,10 +3106,17 @@ function LFG.dungeonNameFromCode(code)
 end
 
 function LFG.dungeonFromCode(code)
+    -- Check currently active table first
     for _, data in next, LFG.dungeons do
-        if data.code == code then
-            return data
-        end
+        if data.code == code then return data end
+    end
+    -- Check all dungeons if not found in active tab
+    for _, data in next, LFG.allDungeons do
+        if data.code == code then return data end
+    end
+    -- Check elite encounters
+    for _, data in next, LFG.eliteEncounters do
+        if data.code == code then return data end
     end
     return false
 end
@@ -3917,7 +3924,12 @@ end
 function sayReady()
     if LFG.inGroup and GetNumPartyMembers() + 1 == LFG.groupSizeMax then
         _G['LFGGroupReady']:Hide()
-        local myRole = LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole
+        -- Use the helper to find data across all tables
+        local dungeonData = LFG.dungeonFromCode(LFG.groupFullCode)
+        
+        if not dungeonData then return end
+
+        local myRole = dungeonData.myRole
         SendAddonMessage(LFG_ADDON_CHANNEL, "readyAs:" .. myRole, "PARTY")
         LFG.SetSingleRole(myRole)
         LFG.GetPossibleRoles()
@@ -3932,21 +3944,17 @@ end
 function sayNotReady()
     if LFG.inGroup and GetNumPartyMembers() + 1 == LFG.groupSizeMax then
         _G['LFGGroupReady']:Hide()
-        
-        -- Safely resolve the dungeon name
-        local dName = LFG.dungeonNameFromCode(LFG.groupFullCode)
-        local dungeonData = dName and LFG.dungeons[dName]
-        
-        -- Prevent the crash if the dungeon code isn't mapped in the table
+
+        -- Use the helper to find data across all tables
+        local dungeonData = LFG.dungeonFromCode(LFG.groupFullCode)
+
         if not dungeonData then
-            print("LFG Debug: Missing dungeon data for code: " .. tostring(LFG.groupFullCode))
-            return -- Exit the function safely
+            -- Fallback: if we can't find the role data, just send the global LFG_ROLE
+            SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. (LFG_ROLE or "damage"), "PARTY")
+        else
+            SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. dungeonData.myRole, "PARTY")
         end
-        
-        local myRole = dungeonData.myRole
-        
-        SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. myRole, "PARTY")
-        LFG.SetSingleRole(myRole)
+
         LFG.GetPossibleRoles()
         LFGMinimapAnimation:Hide()
         _G['LFGReadyStatus']:Show()
@@ -3963,7 +3971,7 @@ function LFG.SetSingleRole(role)
     _G['RoleHealer']:SetChecked(role == 'healer')
     _G['roleCheckHealer']:SetChecked(role == 'healer')
 
-    _G['RoleDamage']:SetChecked(role == 'danage')
+    _G['RoleDamage']:SetChecked(role == 'damage')
     _G['roleCheckDamage']:SetChecked(role == 'damage')
 
     LFG_ROLE = role
