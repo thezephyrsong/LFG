@@ -752,7 +752,7 @@ LFGComms:SetScript("OnEvent", function()
                         lfprint(COLOR_HUNTER .. 'Looking For Group ' .. COLOR_WHITE .. ' - new version available ' ..
                                 COLOR_GREEN .. 'v' .. verEx[2] .. COLOR_WHITE .. ' (current version ' ..
                                 COLOR_ORANGE .. 'v' .. addonVer .. COLOR_WHITE .. ')')
-                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/Bennylavaa/LFG')
+                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
                         LFG.showedUpdateNotification = true
                     end
                 end
