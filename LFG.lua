@@ -1308,19 +1308,19 @@ LFGComms:SetScript("OnEvent", function()
                 local foundLongEx = StringSplit(arg1, ' ')
 
                 for i, found in ipairs(foundLongEx) do
-                    if string.len(found) > 0 then
-                        local foundEx = StringSplit(found, ':')
-                        local mRole = foundEx[2]
-                        local mDungeon = foundEx[3]
-                        local name = foundEx[4]
-                        local prio = nil
-                        if foundEx[5] then
-                            if tonumber(foundEx[5]) then
-                                prio = tonumber(foundEx[5])
-                            end
-                        end
+                  if string.len(found) > 0 and string.sub(found, 1, 6) == 'found:' then  -- <-- add the sub() check
+                  local foundEx = StringSplit(found, ':')
+                  local mRole = foundEx[2]
+                  local mDungeon = foundEx[3]
+                  local name = foundEx[4]
+                  local prio = nil
+                     if foundEx[5] then
+                     if tonumber(foundEx[5]) then
+                     prio = tonumber(foundEx[5])
+                     end
+                 end
 
-                        if string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
+                        if mRole and string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
                             LFG.dungeons[LFG.dungeonNameFromCode(mDungeon)].myRole = mRole
                             lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
 
