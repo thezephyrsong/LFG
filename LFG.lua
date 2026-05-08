@@ -6,6 +6,10 @@ local _G, _ = _G or getfenv()
 local LFG = CreateFrame("Frame")
 local me = UnitName('player')
 local addonVer = GetAddOnMetadata("LFG", "Version")
+-- Protocol version is independent of addonVer. Increment this (not addonVer)
+-- when chat message formats change (e.g. new fields in goingWith/LFG: strings).
+-- Players on different protocol versions cannot communicate correctly.
+local LFG_PROTOCOL_VERSION = 1
 local LFG_ADDON_CHANNEL = 'LFG'
 local groupsFormedThisSession = 0
 
@@ -13,8 +17,6 @@ ROLE_TANK_TOOLTIP = 'Indicates that you are willing to\nprotect allies from harm
 ROLE_HEALER_TOOLTIP = 'Indicates that you are willing to\nheal your allies when they take\ndamage.'
 ROLE_DAMAGE_TOOLTIP = 'Indicates that you are willing to\ntake on the role of dealing\ndamage to enemies.'
 ROLE_BAD_TOOLTIP = 'Your class may not perform this role.'
-
-LFG.WarnedPlayers = LFG.WarnedPlayers or {}
 
 LFG.tab = 1
 LFG.dungeonsSpam = {}
@@ -253,7 +255,10 @@ LFGGoingWithPicker:SetScript("OnUpdate", function()
     local st = (this.startTime + plus) * 1000
     if gt >= st then
 
-        LFG.dungeons[LFG.dungeonNameFromCode(LFGGoingWithPicker.dungeon)].myRole = LFGGoingWithPicker.myRole
+        local dungeonName = LFG.dungeonNameFromCode(LFGGoingWithPicker.dungeon)
+        if LFG.dungeons[dungeonName] then
+            LFG.dungeons[dungeonName].myRole = LFGGoingWithPicker.myRole
+        end
 
         SendChatMessage('goingWith:' .. LFGGoingWithPicker.candidate .. ':' .. LFGGoingWithPicker.dungeon .. ':' .. LFGGoingWithPicker.myRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
 
@@ -322,13 +327,15 @@ LFGDungeonComplete:SetScript("OnUpdate", function()
             LFGDungeonComplete:Hide()
 
             local index = 0
-            for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                index = index + 1
-                LFG.objectivesFrames[index]:Hide()
-                LFG.objectivesFrames[index].completed = false
-                _G["LFGObjective" .. index .. 'ObjectiveComplete']:Hide()
-                _G["LFGObjective" .. index .. 'ObjectivePending']:Hide()
-                _G["LFGObjective" .. index .. 'Objective']:SetText('')
+            if LFG.bosses[LFG.groupFullCode] then
+                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
+                    index = index + 1
+                    LFG.objectivesFrames[index]:Hide()
+                    LFG.objectivesFrames[index].completed = false
+                    _G["LFGObjective" .. index .. 'ObjectiveComplete']:Hide()
+                    _G["LFGObjective" .. index .. 'ObjectivePending']:Hide()
+                    _G["LFGObjective" .. index .. 'Objective']:SetText('')
+                end
             end
             --LFG.objectivesFrames = {}
         end
@@ -476,6 +483,12 @@ LFGInvite:SetScript("OnUpdate", function()
         this.startTime = GetTime()
 
         LFGInvite.inviteIndex = this.inviteIndex + 1
+
+        if not LFG.group[LFG.groupFullCode] then
+            LFGInvite:Hide()
+            LFGInvite.inviteIndex = 1
+            return
+        end
 
         if LFGInvite.inviteIndex == 2 then
             if LFG.group[LFG.groupFullCode].healer ~= '' then
@@ -660,19 +673,6 @@ LFGComms:SetScript("OnEvent", function()
 
         if event == 'CHAT_MSG_ADDON' and arg1 == LFG_ADDON_CHANNEL then
             lfdebug(arg4 .. ' says : ' .. arg2)
-			---------------------------------------------------------
-    -- We look for ":danage" specifically to avoid matching other things
-    if string.find(arg2, ":danage") then
-        -- 1. Fix the string globally for this event call
-        arg2 = string.gsub(arg2, ":danage", ":damage")
-        
-        -- 2. Send the whisper warning (throttled)
-        if not LFG.WarnedPlayers[arg4] then
-            SendChatMessage("LFG Alert: Your version has a typo (danage). Please update to fix your icons!", "WHISPER", nil, arg4)
-            LFG.WarnedPlayers[arg4] = true
-        end
-    end
-    ---------------------------------------------------------
             if string.sub(arg2, 1, 11) == 'objectives:' and arg4 ~= me then
                 local objEx = StringSplit(arg2, ':')
                 if LFG.groupFullCode ~= objEx[2] then
@@ -688,10 +688,12 @@ LFGComms:SetScript("OnEvent", function()
                         if s == '1' then
                             complete = complete + 1
                             local index = 0
-                            for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                                index = index + 1
-                                if index == stringIndex then
-                                    LFGObjectives.objectiveComplete(boss, true)
+                            if LFG.bosses[LFG.groupFullCode] then
+                                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
+                                    index = index + 1
+                                    if index == stringIndex then
+                                        LFGObjectives.objectiveComplete(boss, true)
+                                    end
                                 end
                             end
                         end
@@ -835,7 +837,8 @@ LFGComms:SetScript("OnEvent", function()
                     end
                 end
 
-                local myRole = LFG.dungeons[LFG.dungeonNameFromCode(mCode)].myRole
+                local dungeonEntry = LFG.dungeonFromCode(mCode)
+                local myRole = (dungeonEntry and dungeonEntry.myRole ~= '') and dungeonEntry.myRole or (LFG_ROLE or 'damage')
 
                 LFG.SetSingleRole(myRole)
 
@@ -884,27 +887,31 @@ LFGComms:SetScript("OnEvent", function()
                 LFG.LFMDungeonCode = mCode
                 LFG.resetGroup()
 
-                lfdebug('my role is : ' .. LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole)
+                lfdebug('my role is : ' .. (LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)] and LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole or 'unknown'))
+
+                local lfmdName = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
+                local lfmdEntry = LFG.dungeons[lfmdName]
 
                 --if we dont know my prev role
-                if LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole == '' then
+                if lfmdEntry and lfmdEntry.myRole == '' then
 
                     if _G['RoleTank']:GetChecked() then
-                        LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = 'tank'
+                        lfmdEntry.myRole = 'tank'
                     elseif _G['RoleHealer']:GetChecked() then
-                        LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = 'healer'
+                        lfmdEntry.myRole = 'healer'
                     elseif _G['RoleDamage']:GetChecked() then
-                        LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = 'damage'
+                        lfmdEntry.myRole = 'damage'
                     else
-                        LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = LFG.GetPossibleRoles()
+                        lfmdEntry.myRole = LFG.GetPossibleRoles()
                     end
                 end
 
-                _G['roleCheckTank']:SetChecked(LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole == 'tank')
-                _G['roleCheckHealer']:SetChecked(LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole == 'healer')
-                _G['roleCheckDamage']:SetChecked(LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole == 'damage')
+                local lfmdRole = (lfmdEntry and lfmdEntry.myRole) or ''
+                _G['roleCheckTank']:SetChecked(lfmdRole == 'tank')
+                _G['roleCheckHealer']:SetChecked(lfmdRole == 'healer')
+                _G['roleCheckDamage']:SetChecked(lfmdRole == 'damage')
 
-                lfdebug(' my  role after checks : ' .. LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole)
+                lfdebug(' my  role after checks : ' .. lfmdRole)
 
                 _G['LFGRoleCheckAcceptRole']:Enable()
 
@@ -1179,12 +1186,14 @@ LFGComms:SetScript("OnEvent", function()
             end
 
             if me == healer then
-                LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole = 'healer'
-                LFG.SetSingleRole(LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole)
+                local gfcName = LFG.dungeonNameFromCode(LFG.groupFullCode)
+                if LFG.dungeons[gfcName] then LFG.dungeons[gfcName].myRole = 'healer' end
+                LFG.SetSingleRole('healer')
             end
             if me == damage1 or me == damage2 or me == damage3 then
-                LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole = 'damage'
-                LFG.SetSingleRole(LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole)
+                local gfcName = LFG.dungeonNameFromCode(LFG.groupFullCode)
+                if LFG.dungeons[gfcName] then LFG.dungeons[gfcName].myRole = 'damage' end
+                LFG.SetSingleRole('damage')
             end
 
             LFG.onlyAcceptFrom = arg2
@@ -1199,7 +1208,8 @@ LFGComms:SetScript("OnEvent", function()
                 end
             end
 
-            local myRole = LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole
+            local gfcEntry = LFG.dungeonFromCode(LFG.groupFullCode)
+            local myRole = (gfcEntry and gfcEntry.myRole ~= '') and gfcEntry.myRole or (LFG_ROLE or 'damage')
 
             _G['LFGGroupReadyBackground']:SetTexture('Interface\\addons\\LFG\\images\\background\\ui-lfg-background-' .. background)
             _G['LFGGroupReadyRole']:SetTexture('Interface\\addons\\LFG\\images\\' .. myRole .. '2')
@@ -1207,7 +1217,8 @@ LFGComms:SetScript("OnEvent", function()
             _G['LFGGroupReadyDungeonName']:SetText(dungeonName)
 
             LFG.readyStatusReset()
-            _G['LFGGroupReadyObjectivesCompleted']:SetText('0/' .. LFG.tableSize(LFG.bosses[LFG.groupFullCode]) .. ' Bosses Defeated')
+            local bossCount = LFG.bosses[LFG.groupFullCode] and LFG.tableSize(LFG.bosses[LFG.groupFullCode]) or 0
+            _G['LFGGroupReadyObjectivesCompleted']:SetText('0/' .. bossCount .. ' Bosses Defeated')
             _G['LFGGroupReady']:Show()
             LFGGroupReadyFrameCloser:Show()
             _G['LFGRoleCheck']:Hide()
@@ -1224,15 +1235,31 @@ LFGComms:SetScript("OnEvent", function()
 
         if event == 'CHAT_MSG_CHANNEL' and arg8 == LFG.channelIndex and arg2 ~= me then
             if string.sub(arg1, 1, 7) == 'whoLFG:' then
-                SendChatMessage('meLFG:' .. addonVer, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                -- Include protocol version so receivers can detect incompatibility.
+                -- Format: meLFG:<addonVer>:<protocolVer>
+                SendChatMessage('meLFG:' .. addonVer .. ':' .. LFG_PROTOCOL_VERSION, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
             end
             if string.sub(arg1, 1, 6) == 'meLFG:' then
                 lfdebug(arg1)
+                local verEx = StringSplit(arg1, ':')
+                local ver = verEx[2]
+                local theirProtocol = tonumber(verEx[3])  -- nil if they are on an old version
+                -- Warn once if protocol versions differ (message formats may be incompatible).
+                if not LFG.warnedProtocolMismatch and theirProtocol ~= LFG_PROTOCOL_VERSION then
+                    LFG.warnedProtocolMismatch = true
+                    if theirProtocol then
+                        lfprint(COLOR_RED .. '[LFG] Warning: ' .. arg2 .. ' is using protocol v' ..
+                                theirProtocol .. ' (you are on v' .. LFG_PROTOCOL_VERSION ..
+                                '). Some features may not work correctly between you.')
+                    else
+                        lfprint(COLOR_RED .. '[LFG] Warning: ' .. arg2 ..
+                                ' is using an older version of LFG that may be protocol-incompatible with yours.' ..
+                                ' Ask them to update at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
+                    end
+                end
                 if LFGWhoCounter.listening then
                     LFGWhoCounter.people = LFGWhoCounter.people + 1
                     if me == 'Bennylava' then
-                        local verEx = StringSplit(arg1, ':')
-                        local ver = verEx[2]
                         local color = COLOR_GREEN
                         if LFG.ver(ver) < LFG.ver(addonVer) then
                             color = COLOR_ORANGE
@@ -1321,7 +1348,8 @@ LFGComms:SetScript("OnEvent", function()
                         end
 
                         if string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
-                            LFG.dungeons[LFG.dungeonNameFromCode(mDungeon)].myRole = mRole
+                            local fdName = LFG.dungeonNameFromCode(mDungeon)
+                            if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
                             lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
 
                             SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
@@ -1672,7 +1700,8 @@ LFG:SetScript("OnEvent", function()
 
                             if not LFGFillAvailableDungeonsDelay.queueAfterIfPossible then
                                 --group full
-                                SendAddonMessage(LFG_ADDON_CHANNEL, "LFMPartyReady:" .. LFG.LFMDungeonCode .. ":" .. LFGObjectives.objectivesComplete .. ":" .. LFG.tableSize(LFG.bosses[LFG.LFMDungeonCode]), "PARTY")
+                                local lfmBossCount = LFG.bosses[LFG.LFMDungeonCode] and LFG.tableSize(LFG.bosses[LFG.LFMDungeonCode]) or 0
+                                SendAddonMessage(LFG_ADDON_CHANNEL, "LFMPartyReady:" .. LFG.LFMDungeonCode .. ":" .. LFGObjectives.objectivesComplete .. ":" .. lfmBossCount, "PARTY")
                                 return false -- so it goes into check full in timer
                             end
                             leaveQueue(' someone joined manually')
@@ -1680,8 +1709,9 @@ LFG:SetScript("OnEvent", function()
                         else
                             --joined from the queue, we know his role, check if group is full
                             --  lfdebug('player ' .. newName .. ' joined from queue')
+                            local lfmBossCount = LFG.bosses[LFG.LFMDungeonCode] and LFG.tableSize(LFG.bosses[LFG.LFMDungeonCode]) or 0
                             if LFG.checkLFMGroupReady(LFG.LFMDungeonCode) then
-                                SendAddonMessage(LFG_ADDON_CHANNEL, "LFMPartyReady:" .. LFG.LFMDungeonCode .. ":" .. LFGObjectives.objectivesComplete .. ":" .. LFG.tableSize(LFG.bosses[LFG.LFMDungeonCode]), "PARTY")
+                                SendAddonMessage(LFG_ADDON_CHANNEL, "LFMPartyReady:" .. LFG.LFMDungeonCode .. ":" .. LFGObjectives.objectivesComplete .. ":" .. lfmBossCount, "PARTY")
                             else
                                 SendAddonMessage(LFG_ADDON_CHANNEL, "weInQueue:" .. LFG.LFMDungeonCode, "PARTY")
                             end
@@ -2103,7 +2133,8 @@ LFGQueue:SetScript("OnUpdate", function()
                 if groupFull then
                     LFG.groupFullCode = code
 
-                    LFG.dungeons[LFG.dungeonNameFromCode(LFG.groupFullCode)].myRole = 'tank'
+                    local gfcName = LFG.dungeonNameFromCode(LFG.groupFullCode)
+                    if LFG.dungeons[gfcName] then LFG.dungeons[gfcName].myRole = 'tank' end
 
                     LFG.SetSingleRole('tank')
 
@@ -2523,7 +2554,8 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             end
             if canAdd[1] and canAdd[2] and canAdd[3] and canAdd[4] then
             else
-                LFG.dungeons[LFG.dungeonNameFromCode(dungeonCode)].canQueue = false
+                local cqName = LFG.dungeonNameFromCode(dungeonCode)
+                if LFG.dungeons[cqName] then LFG.dungeons[cqName].canQueue = false end
             end
         end
     end
@@ -3121,19 +3153,11 @@ function LFG.dungeonNameFromCode(code)
 end
 
 function LFG.dungeonFromCode(code)
-    -- Check currently active table first
-    for _, data in next, LFG.dungeons do
-        if data.code == code then return data end
-    end
-    -- Check all dungeons if not found in active tab
-    for _, data in next, LFG.allDungeons do
-        if data.code == code then return data end
-    end
-    -- Check elite encounters
-    for _, data in next, LFG.eliteEncounters do
-        if data.code == code then return data end
-    end
-    return false
+    -- Use dungeonNameFromCode (which already searches all tables) to get the
+    -- name key, then do a single O(1) hash lookup instead of three O(n) loops.
+    local name = LFG.dungeonNameFromCode(code)
+    if not name or name == 'Unknown' then return false end
+    return LFG.allDungeons[name] or LFG.eliteEncounters[name] or false
 end
 
 function LFG.AcceptGroupInvite()
@@ -3244,7 +3268,9 @@ end
 function LFG.weInQueue(code)
 
     local dungeonName = LFG.dungeonNameFromCode(code)
-    LFG.dungeons[dungeonName].queued = true
+    if LFG.dungeons[dungeonName] then
+        LFG.dungeons[dungeonName].queued = true
+    end
 
     lfprint('Your group is in the queue for |cff69ccf0' .. dungeonName)
 
@@ -3860,9 +3886,8 @@ function acceptRole()
     if _G['roleCheckDamage']:GetChecked() then
         myRole = 'damage'
     end
-    LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = myRole
-
-    LFG.SetSingleRole(myRole)
+    local arName = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
+    if LFG.dungeons[arName] then LFG.dungeons[arName].myRole = myRole end
 
     SendAddonMessage(LFG_ADDON_CHANNEL, "acceptRole:" .. myRole, "PARTY")
     LFG.showMyRoleIcon(myRole)
@@ -3881,8 +3906,8 @@ function declineRole()
     if _G['roleCheckDamage']:GetChecked() then
         myRole = 'damage'
     end
-    LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole = myRole
-    local myRole = LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].myRole
+    local drName = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
+    if LFG.dungeons[drName] then LFG.dungeons[drName].myRole = myRole end
     SendAddonMessage(LFG_ADDON_CHANNEL, "declineRole:" .. myRole, "PARTY")
 
     --LFGRoleCheck:Hide()
@@ -4500,7 +4525,8 @@ function leaveQueue(callData)
     if LFG.LFMDungeonCode ~= '' then
         if _G["Dungeon_" .. LFG.LFMDungeonCode .. '_CheckButton'] then
             _G["Dungeon_" .. LFG.LFMDungeonCode .. '_CheckButton']:SetChecked(true)
-            LFG.dungeons[LFG.dungeonNameFromCode(LFG.LFMDungeonCode)].queued = true
+            local lqName = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
+            if LFG.dungeons[lqName] then LFG.dungeons[lqName].queued = true end
         end
     end
 

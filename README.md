@@ -8,7 +8,7 @@ Important note: Remove -main when extracting into your interface/addons folder a
 This addon will not teleport you and your group inside the dungeon.
 
 ## Large Public Test Stage ##
-If you encounter any lua errors or other addon problems please take a screenshot and send it to me (ZephZaeZeit) - preferably on WoW Retro Enhancements or Epog Discords with a short explanation of what you were doing when you encountered the problem breaks your gameplay disable the addon until a new version comes out.
+If you encounter any lua errors or other addon problems please take a screenshot and send it to me (Shadowtoots) on Discord with a short explanation of what you were doing when you encountered the problem breaks your gameplay disable the addon until a new version comes out.
 
 ## Features ##
 
@@ -48,5 +48,3 @@ Once the leader clicks find more, a role check will be initiated and when the ad
 ![queuesolo](https://imgur.com/62LdVAT.png)
 
 _Note: addon communications are made in LFG chat channel, don't manually leave or check it in your main chat frame, its very spammy!_<Br>
-
-Full credits go to Bennylavaa for original port
