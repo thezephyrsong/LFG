@@ -48,3 +48,5 @@ Once the leader clicks find more, a role check will be initiated and when the ad
 ![queuesolo](https://imgur.com/62LdVAT.png)
 
 _Note: addon communications are made in LFG chat channel, don't manually leave or check it in your main chat frame, its very spammy!_<Br>
+
+Full credits go to Bennylavaa for original port
