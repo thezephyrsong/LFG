@@ -14,6 +14,8 @@ ROLE_HEALER_TOOLTIP = 'Indicates that you are willing to\nheal your allies when 
 ROLE_DAMAGE_TOOLTIP = 'Indicates that you are willing to\ntake on the role of dealing\ndamage to enemies.'
 ROLE_BAD_TOOLTIP = 'Your class may not perform this role.'
 
+LFG.WarnedPlayers = LFG.WarnedPlayers or {}
+
 LFG.tab = 1
 LFG.dungeonsSpam = {}
 LFG.dungeonsSpamDisplay = {}
@@ -658,6 +660,19 @@ LFGComms:SetScript("OnEvent", function()
 
         if event == 'CHAT_MSG_ADDON' and arg1 == LFG_ADDON_CHANNEL then
             lfdebug(arg4 .. ' says : ' .. arg2)
+			---------------------------------------------------------
+    -- We look for ":danage" specifically to avoid matching other things
+    if string.find(arg2, ":danage") then
+        -- 1. Fix the string globally for this event call
+        arg2 = string.gsub(arg2, ":danage", ":damage")
+        
+        -- 2. Send the whisper warning (throttled)
+        if not LFG.WarnedPlayers[arg4] then
+            SendChatMessage("LFG Alert: Your version has a typo (danage). Please update to fix your icons!", "WHISPER", nil, arg4)
+            LFG.WarnedPlayers[arg4] = true
+        end
+    end
+    ---------------------------------------------------------
             if string.sub(arg2, 1, 11) == 'objectives:' and arg4 ~= me then
                 local objEx = StringSplit(arg2, ':')
                 if LFG.groupFullCode ~= objEx[2] then
