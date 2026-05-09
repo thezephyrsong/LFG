@@ -4656,7 +4656,7 @@ end
 
 function LFG.sendAdvertisement(chan)
     SendChatMessage('I am using Looking For Group - LFG Addon for Project Epoch v' .. addonVer, chan, DEFAULT_CHAT_FRAME.editBox.languageID)
-    SendChatMessage('Get it at: https://github.com/Bennylavaa/LFG', chan, DEFAULT_CHAT_FRAME.editBox.languageID)
+    SendChatMessage('Get it at: https://github.com/thezephyrsong/LFG', chan, DEFAULT_CHAT_FRAME.editBox.languageID)
 end
 
 function LFG.removeChannelFromWindows()
