@@ -5,11 +5,11 @@ local _G, _ = _G or getfenv()
 
 local LFG = CreateFrame("Frame")
 local me = UnitName('player')
-local addonVer = GetAddOnMetadata("LFG", "Version")
 -- Protocol version is independent of addonVer. Increment this (not addonVer)
 -- when chat message formats change (e.g. new fields in goingWith/LFG: strings).
 -- Players on different protocol versions cannot communicate correctly.
-local LFG_PROTOCOL_VERSION = 1
+local LFG_PROTOCOL_VERSION = 2  -- incremented: added LFT| group/queue channel protocol
+local addonVer = GetAddOnMetadata("LFG", "Version")
 local LFG_ADDON_CHANNEL = 'LFG'
 local groupsFormedThisSession = 0
 
@@ -34,6 +34,7 @@ LFG.findingGroup = false
 LFG.findingMore = false
 LFG:RegisterEvent("ADDON_LOADED")
 LFG:RegisterEvent("PLAYER_ENTERING_WORLD")
+LFG:RegisterEvent("PLAYER_LOGOUT")
 LFG:RegisterEvent("PARTY_MEMBERS_CHANGED")
 LFG:RegisterEvent("PARTY_LEADER_CHANGED")
 LFG:RegisterEvent("PLAYER_LEVEL_UP")
@@ -673,6 +674,10 @@ LFGComms:SetScript("OnEvent", function()
 
         if event == 'CHAT_MSG_ADDON' and arg1 == LFG_ADDON_CHANNEL then
             lfdebug(arg4 .. ' says : ' .. arg2)
+            -- groups v2: whisper/party/raid messages
+            if arg4 ~= me then
+                LFG.Grp_HandleAddonMsg(arg1, arg2, arg3, arg4)
+            end
             if string.sub(arg2, 1, 11) == 'objectives:' and arg4 ~= me then
                 local objEx = StringSplit(arg2, ':')
                 if LFG.groupFullCode ~= objEx[2] then
@@ -1115,6 +1120,10 @@ LFGComms:SetScript("OnEvent", function()
                 LFG.checkLFMgroup(arg4)
             end
         end
+        if event == 'CHAT_MSG_WHISPER' then
+            -- Groups v2: whisper signups are handled via addon messages (GS)
+            -- Legacy !signup plain-text fallback removed
+        end
         if event == 'PARTY_INVITE_REQUEST' then
             if LFG.acceptNextInvite then
                 if arg1 == LFG.onlyAcceptFrom then
@@ -1234,6 +1243,10 @@ LFGComms:SetScript("OnEvent", function()
         end
 
         if event == 'CHAT_MSG_CHANNEL' and arg8 == LFG.channelIndex and arg2 ~= me then
+            -- groups v2: LFT| prefixed messages
+            if string.sub(arg1, 1, 4) == 'LFT|' then
+                LFG.Grp_HandleChannelMsg(arg1, arg2)
+            end
             if string.sub(arg1, 1, 7) == 'whoLFG:' then
                 -- Include protocol version so receivers can detect incompatibility.
                 -- Format: meLFG:<addonVer>:<protocolVer>
@@ -1566,6 +1579,9 @@ LFG:SetScript("OnEvent", function()
     if event then
         if event == "ADDON_LOADED" and arg1 == 'LFG' then
             LFG.init()
+        end
+        if event == "PLAYER_LOGOUT" then
+            LFG.onPlayerLogout()
         end
         if event == "PLAYER_TARGET_CHANGED" and LFG.inGroup then
             if _G['TargetFrame']:IsVisible() then
@@ -3956,6 +3972,8 @@ function LFG_Toggle()
 
         elseif LFG.tab == 2 then
             BrowseDungeonListFrame_Update()
+        elseif LFG.tab == 3 then
+            LFG.Grp_Init()
         end
     end
 
@@ -4677,6 +4695,13 @@ SlashCmdList["LFG"] = function(cmd)
         if string.sub(cmd, 1, 8) == 'sayguild' then
             LFG.sendAdvertisement("GUILD")
         end
+        if string.sub(cmd, 1, 6) == 'groups' then
+            lfg_switch_tab(3)
+            LFG_Toggle()
+        end
+        if string.sub(cmd, 1, 11) == 'cancelgroup' then
+            LFG.Grp_DeleteGroup()
+        end
     end
 end
 
@@ -5189,4 +5214,1526 @@ channelMonitorFrame:SetScript("OnEvent", function()
             end)
         end
     end
+
+-- ============================================================
+-- CUSTOM GROUPS SYSTEM v2  (tab 3)
+-- Full port of LFT2 protocol into LFG.
+--
+-- BROWSE sub-tab:  listed groups (GN/GU/GD) + queue rows merged
+-- QUEUE  sub-tab:  instance checklist + role selection + Find Group
+--
+-- Channel protocol (plain chat on LFG channel, prefix LFT|):
+--   LFT|Q|<instCSV>|<roles>|<lvl>|<class>|<partyInfo>   queue ping
+--   LFT|L|<name>                                          queue leave
+--   LFT|GN|<json>                                         new group
+--   LFT|GU|<json>                                         update group
+--   LFT|GD|<id>                                           delete group
+--
+-- Whisper addon messages (SendAddonMessage prefix LFG_ADDON_CHANNEL):
+--   OFFER|<inst>|<leader>|<role>   leader -> member
+--   ACCEPT|<inst>|<role>           member -> leader
+--   DECLINE|<inst>                 member -> leader
+--   CANCEL|<inst>                  leader -> member (abort)
+--   GS|<id>|<role>                 player -> leader (signup)
+--   GS_OK|<id>                     leader -> player (accepted)
+--   GS_DENY|<id>                   leader -> player (full)
+-- ============================================================
+
+-- ---- Timing constants ----
+local GRP_QUEUE_BROADCAST  = 25    -- seconds between queue pings
+local GRP_GROUP_BROADCAST  = 60    -- seconds between group heartbeats
+local GRP_QUEUE_TTL        = 90    -- drop remote queue entry after N sec
+local GRP_GROUP_TTL        = 180   -- drop remote group listing after N sec
+local GRP_MATCH_SCAN       = 8     -- scan for match every N sec
+local GRP_PRUNE_INTERVAL   = 30    -- prune stale entries every N sec
+local GRP_CMSG_PREFIX      = "LFT|"
+
+-- ---- Category filter labels ----
+LFG.grp_categories = { "Dungeons", "Raids", "PvP", "Other" }
+
+-- ---- Class role table (tank/healer/damage) ----
+LFG.grp_classRoles = {
+    ["DRUID"]     = { true,  true,  true  },
+    ["HUNTER"]    = { false, false, true  },
+    ["MAGE"]      = { false, false, true  },
+    ["PALADIN"]   = { true,  true,  true  },
+    ["PRIEST"]    = { false, true,  true  },
+    ["ROGUE"]     = { false, false, true  },
+    ["SHAMAN"]    = { true,  true,  true  },
+    ["WARLOCK"]   = { false, false, true  },
+    ["WARRIOR"]   = { true,  false, true  },
+    ["DEATHKNIGHT"] = { true, false, true },
+}
+
+-- ---- State ----
+LFG.grp_groups          = {}   -- [id] listed groups (browse)
+LFG.grp_queueEntries    = {}   -- [name] remote queue entries
+LFG.grp_queueCache      = {}   -- [name] synthesised browse rows for queued players
+LFG.grp_listedGroup     = nil  -- our own posted group
+LFG.grp_selectedGroup   = nil  -- selected row in browse list
+LFG.grp_queueStatus     = nil  -- nil | "queued"
+LFG.grp_pendingOffer    = nil  -- { instance, role, leader, match, time, acks }
+LFG.grp_roleCheck       = {}   -- pending rolecheck responses [name]=-1/roleIdx
+LFG.grp_selectedRoles   = { false, false, true }  -- tank, healer, damage
+LFG.grp_selectedInst    = {}   -- [instCode] = true
+LFG.grp_nextGroupId     = 1
+LFG.grp_currentTab      = 1   -- 1=browse, 2=queue
+LFG.grp_categoryFilter  = 1   -- dropdown selection
+LFG.grp_searchText      = ""
+LFG.grp_presets         = LFG_GRP_PRESETS or {}
+LFG.grp_currentPreset   = nil
+LFG.grp_ticker          = { lastQueue=0, lastGroup=0, lastScan=0, lastPrune=0 }
+
+-- Scroll offsets
+LFG.grp_browseOffset = 0
+LFG.grp_queueOffset  = 0
+
+-- Dynamic frame pools
+LFG.grp_groupRows  = {}
+LFG.grp_instRows   = {}
+
+local GRP_GROUPS_SHOWN = 8
+local GRP_INST_SHOWN   = 12
+local GRP_ROW_H        = 31
+local GRP_INST_H       = 21
+
+-- ============================================================
+-- JSON (identical to LFT2, self-contained)
+-- ============================================================
+local grp_json = {}
+
+local function grp_jsonEncVal(v)
+    local t = type(v)
+    if t == "string" then
+        local s = string.gsub(v, "\\", "\\\\")
+        s = string.gsub(s, "\"", "\\\"")
+        s = string.gsub(s, "\n", "\\n")
+        s = string.gsub(s, "\r", "\\r")
+        s = string.gsub(s, "\t", "\\t")
+        return "\"" .. s .. "\""
+    elseif t == "number"  then return tostring(v)
+    elseif t == "boolean" then return v and "true" or "false"
+    elseif t == "table" then
+        local isArr, n = true, 0
+        for k in pairs(v) do n=n+1; if type(k)~="number" then isArr=false; break end end
+        if isArr and n > 0 then
+            local p = {}
+            for i = 1, n do p[i] = grp_jsonEncVal(v[i]) end
+            return "[" .. table.concat(p, ",") .. "]"
+        else
+            local p = {}
+            for k, val in pairs(v) do
+                table.insert(p, "\"" .. tostring(k) .. "\":" .. grp_jsonEncVal(val))
+            end
+            return "{" .. table.concat(p, ",") .. "}"
+        end
+    end
+    return "null"
+end
+
+function grp_json.encode(v) return grp_jsonEncVal(v) end
+
+local grp_jsonDecVal
+local function grp_skipWs(s, i)
+    while i <= #s do
+        local c = string.sub(s,i,i)
+        if c~=" " and c~="\t" and c~="\n" and c~="\r" then break end
+        i=i+1
+    end
+    return i
+end
+local function grp_decStr(s, i)
+    local out, idx = "", i+1
+    while idx <= #s do
+        local c = string.sub(s,idx,idx)
+        if c == "\\" then
+            local nc = string.sub(s,idx+1,idx+1)
+            out = out .. (nc=="n" and "\n" or nc=="r" and "\r" or nc=="t" and "\t" or nc)
+            idx = idx+2
+        elseif c == "\"" then return out, idx+1
+        else out=out..c; idx=idx+1 end
+    end
+    return nil
+end
+local function grp_decNum(s, i)
+    local j = i
+    while j <= #s do
+        local c = string.sub(s,j,j)
+        if not (c=="-" or c=="+" or c=="." or c=="e" or c=="E" or (c>="0" and c<="9")) then break end
+        j=j+1
+    end
+    return tonumber(string.sub(s,i,j-1)), j
+end
+local function grp_decArr(s, i)
+    local out = {}; i = grp_skipWs(s, i+1)
+    if string.sub(s,i,i) == "]" then return out, i+1 end
+    while i <= #s do
+        local v; v, i = grp_jsonDecVal(s, i)
+        table.insert(out, v); i = grp_skipWs(s, i)
+        local c = string.sub(s,i,i)
+        if c == "," then i = grp_skipWs(s, i+1)
+        elseif c == "]" then return out, i+1 else return nil end
+    end
+    return nil
+end
+local function grp_decObj(s, i)
+    local out = {}; i = grp_skipWs(s, i+1)
+    if string.sub(s,i,i) == "}" then return out, i+1 end
+    while i <= #s do
+        i = grp_skipWs(s, i)
+        local key; key, i = grp_decStr(s, i)
+        if not key then return nil end
+        i = grp_skipWs(s, i)
+        if string.sub(s,i,i) ~= ":" then return nil end
+        i = grp_skipWs(s, i+1)
+        local v; v, i = grp_jsonDecVal(s, i)
+        local nk = tonumber(key); if nk then out[nk]=v else out[key]=v end
+        i = grp_skipWs(s, i)
+        local c = string.sub(s,i,i)
+        if c == "," then i = grp_skipWs(s, i+1)
+        elseif c == "}" then return out, i+1 else return nil end
+    end
+    return nil
+end
+grp_jsonDecVal = function(s, i)
+    i = grp_skipWs(s, i or 1)
+    local c = string.sub(s,i,i)
+    if c=="\"" then return grp_decStr(s,i)
+    elseif c=="{" then return grp_decObj(s,i)
+    elseif c=="[" then return grp_decArr(s,i)
+    elseif c=="t" then return true, i+4
+    elseif c=="f" then return false, i+5
+    elseif c=="n" then return nil, i+4
+    else return grp_decNum(s,i) end
+end
+function grp_json.decode(s)
+    if type(s)~="string" or s=="" then return nil end
+    local ok, r = pcall(function() local v,_=grp_jsonDecVal(s,1); return v end)
+    return ok and r or nil
+end
+
+-- ============================================================
+-- Utility helpers
+-- ============================================================
+local function grp_explode(str, sep)
+    if not str then return {} end
+    local out, idx = {}, 1
+    while true do
+        local s, e = string.find(str, sep, idx, true)
+        if not s then table.insert(out, string.sub(str, idx)); break end
+        table.insert(out, string.sub(str, idx, s-1)); idx = e+1
+    end
+    return out
+end
+
+local function grp_trim(s)
+    if not s then return "" end
+    return (string.gsub(s, "^%s*(.-)%s*$", "%1"))
+end
+
+local function grp_isGroupUsingRoles(g)
+    return g and g.limit and (g.limit[1]>0 or g.limit[2]>0 or g.limit[3]>0)
+end
+
+local function grp_inGroupOrRaid()
+    return (GetNumPartyMembers() + GetNumRaidMembers()) > 0
+end
+
+local function grp_getPartyLeader()
+    if GetNumRaidMembers() > 0 then
+        for i = 1, MAX_RAID_MEMBERS do
+            local name, rank = GetRaidRosterInfo(i)
+            if name and rank == 2 then return name end
+        end
+    elseif GetNumPartyMembers() > 0 then
+        if IsPartyLeader() then return UnitName("player") end
+        for i = 1, 4 do
+            if UnitIsPartyLeader("party"..i) then return UnitName("party"..i) end
+        end
+    end
+    return UnitName("player")
+end
+
+local function grp_roleCode(idx)
+    return idx==1 and "t" or idx==2 and "h" or idx==3 and "d" or ""
+end
+local function grp_roleLabel(code)
+    return code=="t" and "Tank" or code=="h" and "Healer" or code=="d" and "Damage" or ""
+end
+local function grp_unescapePipes(s)
+    if not s then return s end
+    return (string.gsub(s, "||", "|"))
+end
+
+-- ============================================================
+-- Channel send (using existing LFG channel infrastructure)
+-- ============================================================
+local function grp_CSend(payload)
+    if LFG.channelIndex == 0 then return end
+    local chanName = GetChannelName(LFG.channel)
+    if not chanName or chanName == "" then return end
+    -- Double any | so WoW colour codes don't eat them; receiver calls grp_unescapePipes
+    local escaped = string.gsub(GRP_CMSG_PREFIX .. payload, "|", "||")
+    SendChatMessage(escaped, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, chanName)
+end
+
+local GRP_WHISPER_PREFIX = "GRP:"
+
+local function grp_AddonSend(msg, where, target)
+    SendAddonMessage(LFG_ADDON_CHANNEL, GRP_WHISPER_PREFIX .. msg, where, target)
+end
+
+local function grp_SendWhisper(msg, target)
+    grp_AddonSend(msg, "WHISPER", target)
+end
+
+local function grp_SendRaid(msg)
+    if grp_inGroupOrRaid() then
+        -- Party/raid messages use GRP: prefix too (via grp_AddonSend)
+        grp_AddonSend(msg, GetNumRaidMembers()>0 and "RAID" or "PARTY")
+    end
+end
+
+-- ============================================================
+-- Group-listing protocol
+-- ============================================================
+local function grp_findGroupByID(id)
+    for i, g in ipairs(LFG.grp_groups) do
+        if g.id == id then return g, i end
+    end
+    return nil
+end
+
+local function grp_broadcastMyGroup(eventCode)
+    if not LFG.grp_listedGroup then return end
+    local g = LFG.grp_listedGroup
+    local blob = {
+        id           = g.id,
+        creator      = g.creator,
+        class        = g.class,
+        title        = g.title,
+        description  = g.description,
+        category     = g.category or 1,
+        limit        = g.limit,
+        numConfirmed = g.numConfirmed,
+    }
+    grp_CSend(eventCode .. "|" .. grp_json.encode(blob))
+end
+
+local function grp_handleRemoteGroup(eventCode, sender, payload)
+    if sender == me then return end
+    if eventCode == "GD" then
+        local id = sender .. ":" .. tostring(tonumber(payload) or payload)
+        local g, idx = grp_findGroupByID(id)
+        if g and g.creator == sender then
+            table.remove(LFG.grp_groups, idx)
+            if LFG.grp_selectedGroup and LFG.grp_selectedGroup.id == id then
+                LFG.grp_selectedGroup = nil
+            end
+            if LFG.tab == 3 then LFG.Grp_UpdateBrowse() end
+        end
+        return
+    end
+    local data = grp_json.decode(payload)
+    if type(data) ~= "table" or not data.id then return end
+    data.creator   = sender
+    data.signups   = { {}, {}, {} }
+    data._lastSeen = GetTime()
+    if not data.numConfirmed then data.numConfirmed = {0,0,0} end
+    if not data.limit        then data.limit        = {0,0,0} end
+    data.id = sender .. ":" .. tostring(data.id)
+    local existing, idx = grp_findGroupByID(data.id)
+    if existing then LFG.grp_groups[idx] = data
+    else table.insert(LFG.grp_groups, data) end
+    if LFG.tab == 3 and LFG.grp_currentTab == 1 then
+        LFG.Grp_UpdateBrowse()
+    end
+end
+
+-- ============================================================
+-- Queue protocol
+-- ============================================================
+local function grp_buildPartyInfo()
+    local n = GetNumPartyMembers()
+    if n == 0 then return "" end
+    local out = {}
+    local _, myClass = UnitClass("player")
+    table.insert(out, (UnitName("player") or "?") .. "," .. (myClass or ""))
+    for i = 1, n do
+        local unit = "party"..i
+        if UnitExists(unit) then
+            local _, c = UnitClass(unit)
+            table.insert(out, (UnitName(unit) or "?") .. "," .. (c or ""))
+        end
+    end
+    return table.concat(out, "/")
+end
+
+local function grp_buildQueueBroadcast()
+    local instStr, roleStr = "", ""
+    for code in pairs(LFG.grp_selectedInst) do instStr = instStr .. code .. "," end
+    if LFG.grp_selectedRoles[1] then roleStr = roleStr .. "t" end
+    if LFG.grp_selectedRoles[2] then roleStr = roleStr .. "h" end
+    if LFG.grp_selectedRoles[3] then roleStr = roleStr .. "d" end
+    if instStr == "" or roleStr == "" then return nil end
+    instStr = string.sub(instStr, 1, -2)
+    local _, class = UnitClass("player")
+    local lvl = UnitLevel("player") or 1
+    return "Q|" .. instStr .. "|" .. roleStr .. "|" .. lvl .. "|" .. (class or "") .. "|" .. grp_buildPartyInfo()
+end
+
+local function grp_broadcastQueue()
+    if LFG.grp_queueStatus ~= "queued" then return end
+    local payload = grp_buildQueueBroadcast()
+    if payload then grp_CSend(payload) end
+end
+
+local function grp_broadcastQueueLeave()
+    grp_CSend("L|" .. (UnitName("player") or ""))
+end
+
+local function grp_pruneQueue()
+    local now = GetTime()
+    for name, entry in pairs(LFG.grp_queueEntries) do
+        if (now - (entry.time or 0)) > GRP_QUEUE_TTL then
+            LFG.grp_queueEntries[name] = nil
+            LFG.grp_queueCache[name]   = nil
+        end
+    end
+end
+
+local function grp_pruneGroups()
+    local now = GetTime()
+    for i = #LFG.grp_groups, 1, -1 do
+        local g = LFG.grp_groups[i]
+        if g and g.creator and g.creator ~= me
+           and g._lastSeen and (now - g._lastSeen) > GRP_GROUP_TTL then
+            if LFG.grp_selectedGroup and LFG.grp_selectedGroup.id == g.id then
+                LFG.grp_selectedGroup = nil
+            end
+            table.remove(LFG.grp_groups, i)
+        end
+    end
+end
+
+local function grp_handleRemoteQueue(sender, instCsv, roleStr, lvl, class, partyInfo)
+    if sender == me then return end
+    local entry = LFG.grp_queueEntries[sender] or {}
+    entry.instances = {}
+    for _, code in ipairs(grp_explode(instCsv, ",")) do
+        if code ~= "" then entry.instances[code] = true end
+    end
+    entry.roles = roleStr or ""
+    entry.level = tonumber(lvl) or 0
+    entry.class = class or ""
+    entry.time  = GetTime()
+    entry.party = {}
+    if partyInfo and partyInfo ~= "" then
+        for _, member in ipairs(grp_explode(partyInfo, "/")) do
+            local parts = grp_explode(member, ",")
+            if parts[1] and parts[1] ~= "" then
+                table.insert(entry.party, { name=parts[1], class=parts[2] or "" })
+            end
+        end
+    end
+    LFG.grp_queueEntries[sender] = entry
+    -- mirror leader's queue to non-leader party members
+    if GetNumPartyMembers() > 0 and not IsPartyLeader() then
+        if grp_getPartyLeader() == sender then
+            LFG.grp_queueStatus = "queued"
+            for k in pairs(LFG.grp_selectedInst) do LFG.grp_selectedInst[k] = nil end
+            for code in pairs(entry.instances) do LFG.grp_selectedInst[code] = true end
+        end
+    end
+    if LFG.tab == 3 and LFG.grp_currentTab == 1 then LFG.Grp_UpdateBrowse() end
+end
+
+local function grp_handleRemoteQueueLeave(sender)
+    LFG.grp_queueEntries[sender] = nil
+    LFG.grp_queueCache[sender]   = nil
+    if GetNumPartyMembers() > 0 and not IsPartyLeader() then
+        if grp_getPartyLeader() == sender and LFG.grp_queueStatus == "queued" then
+            LFG.grp_queueStatus = nil
+        end
+    end
+    if LFG.tab == 3 and LFG.grp_currentTab == 1 then LFG.Grp_UpdateBrowse() end
+end
+
+-- ============================================================
+-- Match-making
+-- ============================================================
+local function grp_findMatchForDungeon(code)
+    local pool = { tanks={}, healers={}, damage={} }
+    if LFG.grp_selectedInst[code] then
+        if LFG.grp_selectedRoles[1] then table.insert(pool.tanks,   me) end
+        if LFG.grp_selectedRoles[2] then table.insert(pool.healers, me) end
+        if LFG.grp_selectedRoles[3] then table.insert(pool.damage,  me) end
+    end
+    for name, entry in pairs(LFG.grp_queueEntries) do
+        if entry.instances and entry.instances[code] then
+            if string.find(entry.roles,"t",1,true) then table.insert(pool.tanks,   name) end
+            if string.find(entry.roles,"h",1,true) then table.insert(pool.healers, name) end
+            if string.find(entry.roles,"d",1,true) then table.insert(pool.damage,  name) end
+        end
+    end
+    if #pool.tanks==0 or #pool.healers==0 or #pool.damage<3 then return nil end
+    local seen = {}
+    local function pick(list)
+        for _, n in ipairs(list) do
+            if not seen[n] then seen[n]=true; return n end
+        end
+    end
+    local t=pick(pool.tanks); local h=pick(pool.healers)
+    local d1=pick(pool.damage); local d2=pick(pool.damage); local d3=pick(pool.damage)
+    if not (t and h and d1 and d2 and d3) then return nil end
+    return { tank=t, healer=h, damage={d1,d2,d3} }
+end
+
+local function grp_scanForMatch()
+    if LFG.grp_queueStatus ~= "queued" then return end
+    if grp_inGroupOrRaid() then return end
+    if LFG.grp_pendingOffer then return end
+    for code in pairs(LFG.grp_selectedInst) do
+        local match = grp_findMatchForDungeon(code)
+        if match then
+            local myRole
+            if match.tank == me then myRole = "t"
+            elseif match.healer == me then myRole = "h"
+            elseif match.damage[1]==me or match.damage[2]==me or match.damage[3]==me then myRole = "d"
+            end
+            if myRole then
+                LFG.grp_pendingOffer = {
+                    instance=code, role=myRole, leader=me,
+                    match=match, time=GetTime(), acks={},
+                }
+                LFG.Grp_ShowReadyFrame(code, myRole)
+                local payload = "OFFER|" .. code .. "|" .. me
+                if match.tank   ~= me then grp_SendWhisper(payload.."|t", match.tank) end
+                if match.healer ~= me then grp_SendWhisper(payload.."|h", match.healer) end
+                for _, d in ipairs(match.damage) do
+                    if d ~= me then grp_SendWhisper(payload.."|d", d) end
+                end
+                return
+            end
+        end
+    end
+end
+
+-- ============================================================
+-- Ready frame / offer handling
+-- ============================================================
+function LFG.Grp_ShowReadyFrame(instCode, role)
+    local inst = LFG_GRP_INSTANCES_MAP and LFG_GRP_INSTANCES_MAP[instCode]
+    local name = inst and inst.name or instCode
+    local bg   = inst and inst.background or "dungeonwall"
+    if _G["LFGGrpReadyInstance"] then
+        _G["LFGGrpReadyInstance"]:SetText(name)
+    end
+    if _G["LFGGrpReadyBG"] then
+        _G["LFGGrpReadyBG"]:SetTexture("Interface\\AddOns\\LFG\\images\\background\\ui-lfg-background-" .. bg)
+    end
+    if _G["LFGGrpReadyRoleTex"] then
+        local roleName = grp_roleLabel(role)
+        _G["LFGGrpReadyRoleTex"]:SetTexture("Interface\\AddOns\\LFG\\images\\" .. string.lower(roleName) .. "2")
+    end
+    if _G["LFGGrpReadyRoleText"] then
+        _G["LFGGrpReadyRoleText"]:SetText(grp_roleLabel(role))
+    end
+    if _G["LFGGrpReadyFrame"] then _G["LFGGrpReadyFrame"]:Show() end
+    PlaySoundFile("Interface\\AddOns\\LFG\\sound\\levelup2.ogg")
+end
+
+function LFG.Grp_ReadyClick(confirm)
+    local pending = LFG.grp_pendingOffer
+    if confirm then
+        if pending then
+            if _G["LFGGrpReadyStatusFrame"] then _G["LFGGrpReadyStatusFrame"]:Show() end
+            if pending.leader == me then
+                pending.acks[me] = pending.role
+                LFG.Grp_MarkSlotReady(pending.role)
+            else
+                grp_SendWhisper("ACCEPT|" .. pending.instance .. "|" .. pending.role, pending.leader)
+            end
+        end
+    else
+        if pending then
+            if pending.leader == me then
+                local match = pending.match
+                if match then
+                    if match.tank   ~= me then grp_SendWhisper("CANCEL|"..pending.instance, match.tank)   end
+                    if match.healer ~= me then grp_SendWhisper("CANCEL|"..pending.instance, match.healer) end
+                    for _, d in ipairs(match.damage) do
+                        if d ~= me then grp_SendWhisper("CANCEL|"..pending.instance, d) end
+                    end
+                end
+            else
+                grp_SendWhisper("DECLINE|"..pending.instance, pending.leader)
+            end
+        end
+        LFG.grp_pendingOffer = nil
+        LFG.grp_queueStatus  = nil
+        grp_broadcastQueueLeave()
+        lfprint(COLOR_YELLOW .. "Group offer declined.")
+        LFG.Grp_UpdateQueue()
+    end
+    if _G["LFGGrpReadyFrame"] then _G["LFGGrpReadyFrame"]:Hide() end
+end
+
+function LFG.Grp_MarkSlotReady(role)
+    local checks = { t="LFGGrpStatusTank", h="LFGGrpStatusHealer" }
+    if checks[role] and _G[checks[role]] then
+        _G[checks[role]]:SetTexture("Interface\\AddOns\\LFG\\images\\readycheck-ready")
+        return
+    end
+    if role == "d" then
+        for i = 1, 3 do
+            local tex = _G["LFGGrpStatusDamage"..i]
+            if tex and tex:GetTexture() and string.find(tex:GetTexture(), "waiting", 1, true) then
+                tex:SetTexture("Interface\\AddOns\\LFG\\images\\readycheck-ready")
+                return
+            end
+        end
+    end
+end
+
+local function grp_checkOfferComplete()
+    local pending = LFG.grp_pendingOffer
+    if not pending or not pending.acks or not pending.match then return end
+    local match = pending.match
+    if not match.tank or not match.healer or not match.damage then return end
+    local needed = { match.tank, match.healer, match.damage[1], match.damage[2], match.damage[3] }
+    for _, n in ipairs(needed) do
+        if not pending.acks[n] then return end
+    end
+    -- all ready
+    if pending.leader == me then
+        for _, n in ipairs(needed) do
+            if n ~= me then InviteUnit(n) end
+        end
+        lfprint(COLOR_HUNTER .. "All members confirmed! Group forming for " .. (pending.instance) .. ".")
+    end
+    LFG.grp_queueStatus  = nil
+    LFG.grp_pendingOffer = nil
+    if _G["LFGGrpReadyStatusFrame"] then _G["LFGGrpReadyStatusFrame"]:Hide() end
+    grp_broadcastQueueLeave()
+    -- also remove our listing if we had one
+    if LFG.grp_listedGroup then
+        grp_CSend("GD|" .. tostring(LFG.grp_listedGroup.id))
+        local _, idx = grp_findGroupByID(me .. ":" .. tostring(LFG.grp_listedGroup.id))
+        if idx then table.remove(LFG.grp_groups, idx) end
+        LFG.grp_listedGroup = nil
+    end
+    LFG.Grp_UpdateQueue()
+end
+
+-- ============================================================
+-- Whisper / addon message handling
+-- ============================================================
+local function grp_handleOfferMsg(eventCode, sender, payload)
+    local parts = grp_explode(payload, "|")
+    if eventCode == "OFFER" then
+        local inst, leader, role = parts[1], parts[2], parts[3]
+        if LFG.grp_queueStatus ~= "queued" or LFG.grp_pendingOffer then return end
+        LFG.grp_pendingOffer = { instance=inst, leader=leader, role=role, time=GetTime() }
+        LFG.Grp_ShowReadyFrame(inst, role)
+    elseif eventCode == "ACCEPT" then
+        local pending = LFG.grp_pendingOffer
+        if not pending or pending.leader ~= me then return end
+        local inst, role = parts[1], parts[2]
+        if pending.instance ~= inst then return end
+        pending.acks = pending.acks or {}
+        pending.acks[sender] = role
+        LFG.Grp_MarkSlotReady(role)
+        grp_checkOfferComplete()
+    elseif eventCode == "DECLINE" then
+        local pending = LFG.grp_pendingOffer
+        if not pending or pending.leader ~= me then return end
+        if pending.match then
+            for _, n in ipairs({pending.match.tank, pending.match.healer,
+                                 pending.match.damage[1], pending.match.damage[2], pending.match.damage[3]}) do
+                if n ~= me and n ~= sender then grp_SendWhisper("CANCEL|"..pending.instance, n) end
+            end
+        end
+        LFG.grp_pendingOffer = nil
+        if _G["LFGGrpReadyFrame"] then _G["LFGGrpReadyFrame"]:Hide() end
+        if _G["LFGGrpReadyStatusFrame"] then _G["LFGGrpReadyStatusFrame"]:Hide() end
+        lfprint(sender .. " declined the group.")
+    elseif eventCode == "CANCEL" then
+        LFG.grp_pendingOffer = nil
+        if _G["LFGGrpReadyFrame"] then _G["LFGGrpReadyFrame"]:Hide() end
+        if _G["LFGGrpReadyStatusFrame"] then _G["LFGGrpReadyStatusFrame"]:Hide() end
+    elseif eventCode == "GS" then
+        -- signup: GS|<id>|<role>
+        local id, role = parts[1], parts[2]
+        if not LFG.grp_listedGroup then return end
+        if LFG.grp_listedGroup.id ~= (me..":"..tostring(id)) then return end
+        local roleIdx = role=="t" and 1 or role=="h" and 2 or role=="d" and 3 or 0
+        if roleIdx == 0 then return end
+        local lim  = LFG.grp_listedGroup.limit or {0,0,0}
+        local conf = LFG.grp_listedGroup.numConfirmed or {0,0,0}
+        if (lim[roleIdx] or 0) == 0 or conf[roleIdx] >= lim[roleIdx] then
+            grp_SendWhisper("GS_DENY|"..tostring(id), sender); return
+        end
+        table.insert(LFG.grp_listedGroup.signups[roleIdx], { name=sender })
+        conf[roleIdx] = conf[roleIdx] + 1
+        grp_broadcastMyGroup("GU")
+        grp_SendWhisper("GS_OK|"..tostring(id), sender)
+        lfprint(sender .. " signed up as " .. grp_roleLabel(role) .. " for your group.")
+        if LFG.tab == 3 then LFG.Grp_UpdateBrowse() end
+    elseif eventCode == "GS_OK" then
+        lfprint(COLOR_GREEN .. "Signup accepted! The leader will invite you.")
+    elseif eventCode == "GS_DENY" then
+        lfprint(COLOR_RED .. "Signup denied — that role is already full.")
+    end
+end
+
+local function grp_handlePartyMsg(msg, sender)
+    if string.find(msg, "C2C_ROLECHECK_RESPONSE", 1, true) then
+        local parts = StringSplit(msg, ";")
+        local role = parts[2] or ""
+        local roleIdx = role=="t" and 1 or role=="h" and 2 or role=="d" and 3 or 0
+        lfprint(sender .. " selected role: " .. (grp_roleLabel(role) ~= "" and grp_roleLabel(role) or "unknown"))
+        if not LFG.grp_listedGroup then return end
+        if LFG.grp_roleCheck[sender] then LFG.grp_roleCheck[sender] = roleIdx end
+        for _, status in pairs(LFG.grp_roleCheck) do
+            if status == -1 then return end
+        end
+        LFG.grp_listedGroup.signups = { {}, {}, {} }
+        for name, ridx in pairs(LFG.grp_roleCheck) do
+            if ridx > 0 then
+                table.insert(LFG.grp_listedGroup.signups[ridx], { name=name })
+            end
+        end
+        for k in pairs(LFG.grp_roleCheck) do LFG.grp_roleCheck[k] = nil end
+        grp_broadcastMyGroup("GU")
+        if LFG.tab == 3 then LFG.Grp_UpdateBrowse() end
+        return
+    end
+    if string.find(msg, "C2C_ROLECHECK_START", 1, true) then
+        local parts = StringSplit(msg, ";")
+        lfdebug("GRP rolecheck start from " .. sender .. " for group " .. (parts[2] or "?"))
+        LFG.Grp_ShowRoleCheckFrame()
+        return
+    end
+    if msg == "C2C_ROLECHECK_STOP" then
+        if _G["LFGGrpRoleCheckFrame"] then _G["LFGGrpRoleCheckFrame"]:Hide() end
+        for k in pairs(LFG.grp_roleCheck) do LFG.grp_roleCheck[k] = nil end
+    end
+end
+
+-- Called from LFGComms OnEvent for CHAT_MSG_ADDON
+function LFG.Grp_HandleAddonMsg(prefix, msg, channel, sender)
+    if prefix ~= LFG_ADDON_CHANNEL then return end
+    if channel == "PARTY" or channel == "RAID" then
+        if string.sub(msg, 1, 4) ~= GRP_WHISPER_PREFIX then return end
+        local body = string.sub(msg, 5)
+        grp_handlePartyMsg(body, sender)
+        return
+    end
+    if channel == "WHISPER" then
+        if string.sub(msg, 1, 4) ~= GRP_WHISPER_PREFIX then return end
+        local body = string.sub(msg, 5)
+        local pipePos = string.find(body, "|", 1, true)
+        if not pipePos then return end
+        local code = string.sub(body, 1, pipePos-1)
+        local rest = string.sub(body, pipePos+1)
+        grp_handleOfferMsg(code, sender, rest)
+    end
+end
+
+-- Called from the channel message handler
+function LFG.Grp_HandleChannelMsg(text, sender)
+    text = grp_unescapePipes(text)
+    if string.sub(text, 1, #GRP_CMSG_PREFIX) ~= GRP_CMSG_PREFIX then return end
+    if sender == me then return end
+    local body = string.sub(text, #GRP_CMSG_PREFIX + 1)
+    local pipePos = string.find(body, "|", 1, true)
+    if not pipePos then return end
+    local code = string.sub(body, 1, pipePos-1)
+    local rest = string.sub(body, pipePos+1)
+
+    if code == "Q" then
+        local parts = grp_explode(rest, "|")
+        grp_handleRemoteQueue(sender, parts[1] or "", parts[2] or "",
+                              parts[3] or 0,   parts[4] or "", parts[5] or "")
+    elseif code == "L" then
+        grp_handleRemoteQueueLeave(sender)
+    elseif code == "GN" or code == "GU" or code == "GD" then
+        grp_handleRemoteGroup(code, sender, rest)
+    end
+end
+
+-- ============================================================
+-- Role check frame (party/raid)
+-- ============================================================
+function LFG.Grp_StartRoleCheck()
+    if not LFG.grp_listedGroup then return end
+    for k in pairs(LFG.grp_roleCheck) do LFG.grp_roleCheck[k] = nil end
+    if GetNumRaidMembers() > 0 then
+        for i = 1, GetNumRaidMembers() do
+            local name, _, _, _, _, _, _, online = GetRaidRosterInfo(i)
+            if name and online then LFG.grp_roleCheck[name] = -1 end
+        end
+    else
+        LFG.grp_roleCheck[me] = -1
+        for i = 1, GetNumPartyMembers() do
+            if UnitIsConnected("party"..i) then
+                LFG.grp_roleCheck[UnitName("party"..i)] = -1
+            end
+        end
+    end
+    grp_SendRaid("C2C_ROLECHECK_START;" .. tostring(LFG.grp_listedGroup.id))
+    LFG.Grp_ShowRoleCheckFrame()
+end
+
+function LFG.Grp_ShowRoleCheckFrame()
+    if _G["LFGGrpRoleCheckFrame"] then _G["LFGGrpRoleCheckFrame"]:Show() end
+    PlaySoundFile("Interface\\AddOns\\LFG\\sound\\lfg_rolecheck.ogg")
+end
+
+function LFG.Grp_RoleCheckConfirm()
+    local role = "0"
+    if _G["LFGGrpRCTank"]   and _G["LFGGrpRCTank"]:GetChecked()   then role = "t"
+    elseif _G["LFGGrpRCHealer"] and _G["LFGGrpRCHealer"]:GetChecked() then role = "h"
+    elseif _G["LFGGrpRCDamage"] and _G["LFGGrpRCDamage"]:GetChecked() then role = "d"
+    end
+    grp_SendRaid("C2C_ROLECHECK_RESPONSE;" .. role)
+    if _G["LFGGrpRoleCheckFrame"] then _G["LFGGrpRoleCheckFrame"]:Hide() end
+end
+
+function LFG.Grp_RoleCheckDecline()
+    grp_SendRaid("C2C_ROLECHECK_RESPONSE;0")
+    PlaySoundFile("Interface\\AddOns\\LFG\\sound\\lfg_denied.ogg")
+    if _G["LFGGrpRoleCheckFrame"] then _G["LFGGrpRoleCheckFrame"]:Hide() end
+end
+
+-- ============================================================
+-- Instance data for queue tab  (Epoch / WotLK dungeons)
+-- pulled from LFG's own dungeon table so no duplication needed
+-- ============================================================
+local function grp_buildInstTable()
+    local t = {}
+    for name, data in pairs(LFG.allDungeons or {}) do
+        if data.code then
+            table.insert(t, {
+                code      = data.code,
+                name      = name,
+                minLevel  = data.minLevel or 1,
+                maxLevel  = data.maxLevel or 80,
+                background= data.background or "dungeonwall",
+            })
+        end
+    end
+    -- also include eliteEncounters
+    for name, data in pairs(LFG.eliteEncounters or {}) do
+        if data.code then
+            table.insert(t, {
+                code      = data.code,
+                name      = name,
+                minLevel  = data.minLevel or 1,
+                maxLevel  = data.maxLevel or 80,
+                background= data.background or "dungeonwall",
+                isElite   = true,
+            })
+        end
+    end
+    table.sort(t, function(a,b)
+        if a.minLevel == b.minLevel then return a.maxLevel > b.maxLevel end
+        return a.minLevel > b.minLevel
+    end)
+    return t
+end
+
+LFG_GRP_INSTANCES     = nil  -- sorted array, built lazily
+LFG_GRP_INSTANCES_MAP = nil  -- code→entry dict, built alongside array
+
+local function grp_getInstTable()
+    if not LFG_GRP_INSTANCES then
+        LFG_GRP_INSTANCES     = grp_buildInstTable()
+        LFG_GRP_INSTANCES_MAP = {}
+        for _, entry in ipairs(LFG_GRP_INSTANCES) do
+            LFG_GRP_INSTANCES_MAP[entry.code] = entry
+        end
+    end
+    return LFG_GRP_INSTANCES
+end
+
+-- ============================================================
+-- UI: Browse tab
+-- ============================================================
+local function grp_syntheticEntry(name, qe)
+    local dungeonNames = {}
+    local instTable = grp_getInstTable()
+    for _, inst in ipairs(instTable) do
+        if qe.instances and qe.instances[inst.code] then
+            table.insert(dungeonNames, inst.name)
+        end
+    end
+    table.sort(dungeonNames)
+    local roleList = {}
+    local roles = qe.roles or ""
+    if string.find(roles,"t",1,true) then table.insert(roleList,"Tank")   end
+    if string.find(roles,"h",1,true) then table.insert(roleList,"Healer") end
+    if string.find(roles,"d",1,true) then table.insert(roleList,"Damage") end
+    local partyDesc = ""
+    if qe.party and #qe.party > 0 then
+        local memNames = {}
+        for _, m in ipairs(qe.party) do table.insert(memNames, m.name) end
+        partyDesc = " | Party: " .. table.concat(memNames, ", ")
+    end
+    local entry = LFG.grp_queueCache[name] or {}
+    entry.creator      = name
+    entry.class        = qe.class
+    entry.title        = #dungeonNames > 0 and table.concat(dungeonNames,", ") or "(queued)"
+    entry.description  = "Lvl " .. (qe.level or "?") .. " | " .. table.concat(roleList,"/") .. partyDesc
+    entry.category     = 1
+    entry.limit        = {
+        string.find(qe.roles or "","t",1,true) and 1 or 0,
+        string.find(qe.roles or "","h",1,true) and 1 or 0,
+        string.find(qe.roles or "","d",1,true) and 1 or 0,
+    }
+    entry.numConfirmed = { 0, 0, 0 }
+    entry._isQueue     = true
+    entry._lastSeen    = qe.time
+    entry.id           = "queue:" .. name
+    LFG.grp_queueCache[name] = entry
+    return entry
+end
+
+local function grp_buildMergedList()
+    -- purge stale cache
+    for name in pairs(LFG.grp_queueCache) do
+        if not LFG.grp_queueEntries[name] then LFG.grp_queueCache[name] = nil end
+    end
+    local merged = {}
+    local search = string.lower(LFG.grp_searchText or "")
+    for _, g in ipairs(LFG.grp_groups) do
+        local match = search == ""
+            or string.find(string.lower(g.title or ""), search, 1, true)
+            or string.find(string.lower(g.description or ""), search, 1, true)
+        if match then table.insert(merged, g) end
+    end
+    for name, qe in pairs(LFG.grp_queueEntries) do
+        if name ~= me and qe.instances and next(qe.instances) then
+            local syn = grp_syntheticEntry(name, qe)
+            if search == ""
+               or string.find(string.lower(syn.title or ""), search, 1, true) then
+                table.insert(merged, syn)
+            end
+        end
+    end
+    -- filter by category
+    local filtered = {}
+    for _, g in ipairs(merged) do
+        if (g.category or 1) == LFG.grp_categoryFilter then
+            table.insert(filtered, g)
+        end
+    end
+    return filtered
+end
+
+function LFG.Grp_UpdateBrowse()
+    if LFG.tab ~= 3 or LFG.grp_currentTab ~= 1 then return end
+
+    local data = grp_buildMergedList()
+    local offset = LFG.grp_browseOffset
+
+    -- hide all rows first
+    for _, row in ipairs(LFG.grp_groupRows) do row:Hide() end
+
+    for i = 1, GRP_GROUPS_SHOWN do
+        local entry = data[i + offset]
+        local row = LFG.grp_groupRows[i]
+        if not row then break end
+        if entry then
+            local cc = RAID_CLASS_COLORS and entry.class and RAID_CLASS_COLORS[entry.class]
+            local rowName    = row:GetName()
+            local leaderText = rowName and _G[rowName .. "LeaderText"]
+            local titleText  = rowName and _G[rowName .. "Text"]
+            local subText    = rowName and _G[rowName .. "SubText"]
+            if titleText  then titleText:SetText(entry.title or "") end
+            if subText    then subText:SetText(entry.description or "") end
+            if leaderText then
+                leaderText:SetText(entry.creator or "")
+                if cc then leaderText:SetTextColor(cc.r, cc.g, cc.b)
+                else leaderText:SetTextColor(0.8, 0.8, 0.8) end
+            end
+            for role = 1, 3 do
+                local icon   = rowName and _G[rowName .. "Role" .. role .. "Icon"]
+                local number = rowName and _G[rowName .. "Role" .. role .. "Number"]
+                if entry.limit and entry.limit[role] and entry.limit[role] > 0 then
+                    if icon   then icon:SetAlpha(1) end
+                    if number then
+                        number:SetText(entry._isQueue and "" or
+                            ((entry.numConfirmed and entry.numConfirmed[role] or 0)
+                             .. "/" .. entry.limit[role]))
+                    end
+                else
+                    if icon   then icon:SetAlpha(0) end
+                    if number then number:SetText("") end
+                end
+            end
+            row.data = entry
+            row.title = entry.title
+            row.creator = entry.creator
+            row.description = entry.description
+            local isSelected = LFG.grp_selectedGroup and
+                                entry.id and
+                                LFG.grp_selectedGroup.id == entry.id
+            if isSelected then
+                row:LockHighlight()
+                local hl = rowName and _G[rowName.."Highlight"]
+                if hl then hl:Show() end
+            else
+                row:UnlockHighlight()
+                local hl = rowName and _G[rowName.."Highlight"]
+                if hl then hl:Hide() end
+            end
+            row:Show()
+        end
+    end
+
+    -- scroll bar
+    local scrollFrame = _G["LFGGrpBrowseScroll"]
+    if scrollFrame then
+        FauxScrollFrame_Update(scrollFrame, #data, GRP_GROUPS_SHOWN, GRP_ROW_H)
+    end
+
+    -- new / edit / unlist button label
+    local btn = _G["LFGGrpNewGroupBtn"]
+    if btn then
+        btn:SetText(LFG.grp_listedGroup and "Edit Group" or "New Group")
+    end
+
+    -- whisper button
+    local wBtn = _G["LFGGrpWhisperBtn"]
+    if wBtn then
+        if LFG.grp_selectedGroup and LFG.grp_selectedGroup.creator ~= me then
+            wBtn:Enable()
+        else
+            wBtn:Disable()
+        end
+    end
+
+    -- category dropdown label
+    local dd = _G["LFGGrpCategoryDropDown"]
+    if dd then
+        UIDropDownMenu_SetText(dd, LFG.grp_categories[LFG.grp_categoryFilter] or "Dungeons")
+    end
+end
+
+-- ============================================================
+-- UI: Queue tab
+-- ============================================================
+function LFG.Grp_UpdateQueue()
+    if LFG.tab ~= 3 or LFG.grp_currentTab ~= 2 then return end
+
+    local inRaid = GetNumRaidMembers() > 0
+    local isLeader = IsPartyLeader() or GetNumPartyMembers() == 0
+    local queued = LFG.grp_queueStatus == "queued"
+
+    -- main button
+    local mainBtn = _G["LFGGrpMainBtn"]
+    if mainBtn then
+        if queued then
+            mainBtn:SetText("Leave Queue")
+        elseif GetNumPartyMembers() > 0 then
+            mainBtn:SetText("Find More")
+        else
+            mainBtn:SetText("Find Group")
+        end
+        if isLeader and not inRaid then mainBtn:Enable()
+        else mainBtn:Disable() end
+    end
+
+    local instTable = grp_getInstTable()
+    local playerLevel = UnitLevel("player") or 1
+    local offset = LFG.grp_queueOffset
+
+    for _, row in ipairs(LFG.grp_instRows) do row:Hide() end
+
+    local shown = 0
+    for i = 1, GRP_INST_SHOWN do
+        local inst = instTable[i + offset]
+        if not inst then break end
+        local row = LFG.grp_instRows[i]
+        if not row then break end
+
+        local nameText = _G[row:GetName() .. "Name"]
+        local levText  = _G[row:GetName() .. "Levels"]
+        local cb       = _G[row:GetName() .. "CheckButton"]
+
+        if nameText then nameText:SetText(inst.name) end
+        if levText  then levText:SetText("("..inst.minLevel.."-"..inst.maxLevel..")") end
+
+        -- colour by level diff
+        local avg = math.floor((inst.maxLevel - inst.minLevel) / 2) + inst.minLevel
+        local diff = avg - playerLevel
+        local r, g, b
+        if diff > 4 then r,g,b = 1,0,0
+        elseif diff > 2 then r,g,b = 1,0.5,0.25
+        elseif diff > -3 then r,g,b = 1,1,0
+        elseif diff > -12 then r,g,b = 0.25,0.75,0.25
+        else r,g,b = 0.5,0.5,0.5 end
+        if nameText then nameText:SetTextColor(r,g,b) end
+        if levText  then levText:SetTextColor(r,g,b) end
+
+        row.r, row.g, row.b = r, g, b
+        row.instance = inst.code
+
+        if cb then
+            cb:SetChecked(LFG.grp_selectedInst[inst.code] and true or false)
+            if queued or inRaid or not isLeader then cb:Disable()
+            else cb:Enable() end
+        end
+
+        row:Show()
+        shown = shown + 1
+    end
+
+    local scrollFrame = _G["LFGGrpQueueScroll"]
+    if scrollFrame then
+        FauxScrollFrame_Update(scrollFrame, #instTable, GRP_INST_SHOWN, GRP_INST_H)
+    end
+
+    -- role checkboxes
+    for i = 1, 3 do
+        local rb = _G["LFGGrpRole"..i.."Check"]
+        if rb then
+            rb:SetChecked(LFG.grp_selectedRoles[i])
+            local _, class = UnitClass("player")
+            local roles = LFG.grp_classRoles[class] or {false,false,true}
+            if queued or inRaid or not isLeader or not roles[i] then rb:Disable()
+            else rb:Enable() end
+        end
+    end
+
+    -- can-queue check
+    local canQueue = next(LFG.grp_selectedInst) ~= nil
+                  and (LFG.grp_selectedRoles[1] or LFG.grp_selectedRoles[2] or LFG.grp_selectedRoles[3])
+    if mainBtn then
+        if not queued and not canQueue then mainBtn:Disable() end
+    end
+end
+
+-- ============================================================
+-- UI: New Group form
+-- ============================================================
+function LFG.Grp_OpenNewGroupForm()
+    local frame = _G["LFGGrpNewGroupForm"]
+    if not frame then return end
+    if LFG.grp_listedGroup then
+        -- edit mode
+        local g = LFG.grp_listedGroup
+        local titleEB = _G["LFGGrpFormTitle"]
+        local descEB  = _G["LFGGrpFormDesc"]
+        if titleEB then titleEB:SetText(g.title or "") end
+        if descEB  then descEB:SetText(g.description or "") end
+        local useRoles = _G["LFGGrpFormUseRoles"]
+        if useRoles then useRoles:SetChecked(grp_isGroupUsingRoles(g)) end
+        if _G["LFGGrpFormT"] then _G["LFGGrpFormT"]:SetText(tostring(g.limit[1])) end
+        if _G["LFGGrpFormH"] then _G["LFGGrpFormH"]:SetText(tostring(g.limit[2])) end
+        if _G["LFGGrpFormD"] then _G["LFGGrpFormD"]:SetText(tostring(g.limit[3])) end
+        local delBtn = _G["LFGGrpFormDeleteBtn"]
+        if delBtn then delBtn:Show() end
+    else
+        -- new mode
+        local titleEB = _G["LFGGrpFormTitle"]
+        local descEB  = _G["LFGGrpFormDesc"]
+        if titleEB then titleEB:SetText("") end
+        if descEB  then descEB:SetText("") end
+        if _G["LFGGrpFormT"] then _G["LFGGrpFormT"]:SetText("1") end
+        if _G["LFGGrpFormH"] then _G["LFGGrpFormH"]:SetText("1") end
+        if _G["LFGGrpFormD"] then _G["LFGGrpFormD"]:SetText("3") end
+        local delBtn = _G["LFGGrpFormDeleteBtn"]
+        if delBtn then delBtn:Hide() end
+    end
+    frame:Show()
+end
+
+function LFG.Grp_SubmitGroupForm()
+    local titleEB = _G["LFGGrpFormTitle"]
+    local descEB  = _G["LFGGrpFormDesc"]
+    local title = titleEB and grp_trim(titleEB:GetText()) or ""
+    if title == "" then
+        lfprint("Please enter a group title."); return
+    end
+    local desc  = descEB and descEB:GetText() or ""
+    local useRoles = _G["LFGGrpFormUseRoles"]
+    local tanks, healers, damage = 0, 0, 0
+    if useRoles and useRoles:GetChecked() then
+        tanks   = tonumber(_G["LFGGrpFormT"] and _G["LFGGrpFormT"]:GetText()) or 0
+        healers = tonumber(_G["LFGGrpFormH"] and _G["LFGGrpFormH"]:GetText()) or 0
+        damage  = tonumber(_G["LFGGrpFormD"] and _G["LFGGrpFormD"]:GetText()) or 0
+    end
+    local _, class = UnitClass("player")
+    if LFG.grp_listedGroup then
+        -- update
+        local g = LFG.grp_listedGroup
+        g.title = title; g.description = desc
+        g.limit = { tanks, healers, damage }
+        grp_broadcastMyGroup("GU")
+        lfprint("Group listing updated.")
+    else
+        -- new
+        local g = {
+            id           = LFG.grp_nextGroupId,
+            creator      = me,
+            class        = class,
+            title        = title,
+            description  = desc,
+            category     = LFG.grp_categoryFilter,
+            limit        = { tanks, healers, damage },
+            numConfirmed = { 0, 0, 0 },
+            signups      = { {}, {}, {} },
+        }
+        LFG.grp_nextGroupId = LFG.grp_nextGroupId + 1
+        LFG.grp_listedGroup = g
+        local stored = {}
+        for k, v in pairs(g) do stored[k] = v end
+        stored.id = me .. ":" .. tostring(g.id)
+        stored._lastSeen = GetTime()
+        table.insert(LFG.grp_groups, 1, stored)
+        grp_broadcastMyGroup("GN")
+        lfprint(COLOR_HUNTER .. "Group listed: " .. COLOR_WHITE .. title)
+    end
+    if _G["LFGGrpNewGroupForm"] then _G["LFGGrpNewGroupForm"]:Hide() end
+    LFG.Grp_UpdateBrowse()
+end
+
+function LFG.Grp_DeleteGroup()
+    if not LFG.grp_listedGroup then return end
+    local g = LFG.grp_listedGroup
+    grp_CSend("GD|" .. tostring(g.id))
+    local _, idx = grp_findGroupByID(me .. ":" .. tostring(g.id))
+    if idx then table.remove(LFG.grp_groups, idx) end
+    LFG.grp_listedGroup = nil
+    LFG.grp_selectedGroup = nil
+    if _G["LFGGrpNewGroupForm"] then _G["LFGGrpNewGroupForm"]:Hide() end
+    lfprint("Group listing removed.")
+    LFG.Grp_UpdateBrowse()
+end
+
+-- ============================================================
+-- UI: Queue main button
+-- ============================================================
+function LFG.Grp_MainButtonClick()
+    if LFG.grp_queueStatus == "queued" then
+        LFG.grp_queueStatus = nil
+        grp_broadcastQueueLeave()
+        if _G["LFGGrpReadyFrame"]       then _G["LFGGrpReadyFrame"]:Hide() end
+        if _G["LFGGrpReadyStatusFrame"] then _G["LFGGrpReadyStatusFrame"]:Hide() end
+        LFG.grp_pendingOffer = nil
+        lfprint("Left the queue.")
+    else
+        if not next(LFG.grp_selectedInst) then
+            lfprint(COLOR_RED .. "Select at least one dungeon first."); return
+        end
+        if not (LFG.grp_selectedRoles[1] or LFG.grp_selectedRoles[2] or LFG.grp_selectedRoles[3]) then
+            lfprint(COLOR_RED .. "Select at least one role first."); return
+        end
+        LFG.grp_queueStatus = "queued"
+        grp_broadcastQueue()
+        local instNames = {}
+        local instTable = grp_getInstTable()
+        for _, inst in ipairs(instTable) do
+            if LFG.grp_selectedInst[inst.code] then
+                table.insert(instNames, inst.name)
+            end
+        end
+        lfprint(COLOR_HUNTER .. "Joined queue for: " .. COLOR_WHITE .. table.concat(instNames, ", "))
+        PlaySound("PvpEnterQueue")
+    end
+    LFG.Grp_UpdateQueue()
+end
+
+-- ============================================================
+-- UI: sub-tab switch (browse / queue)
+-- ============================================================
+function LFG.Grp_SwitchSubTab(t)
+    LFG.grp_currentTab = t
+    local browseContent = _G["LFGGrpBrowseContent"]
+    local queueContent  = _G["LFGGrpQueueContent"]
+    if browseContent then browseContent:SetShown(t == 1) end
+    if queueContent  then queueContent:SetShown(t == 2) end
+    if t == 1 then LFG.Grp_UpdateBrowse()
+    else            LFG.Grp_UpdateQueue() end
+end
+
+-- ============================================================
+-- UI: whisper selected group leader
+-- ============================================================
+function LFG.Grp_WhisperSelected()
+    if not LFG.grp_selectedGroup then return end
+    local leader = LFG.grp_selectedGroup.creator
+    if leader and leader ~= me then
+        if ChatFrame_OpenChat then
+            ChatFrame_OpenChat("/w " .. leader .. " ")
+        else
+            local eb = DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.editBox
+            if eb then eb:SetText("/w " .. leader .. " "); eb:Show(); eb:SetFocus() end
+        end
+    end
+end
+
+-- ============================================================
+-- UI: signup for selected group
+-- ============================================================
+function LFG.Grp_SignupSelected()
+    local g = LFG.grp_selectedGroup
+    if not g or g._isQueue then return end
+    -- determine our best role
+    local role = "d"
+    if LFG.grp_selectedRoles[1] then role = "t"
+    elseif LFG.grp_selectedRoles[2] then role = "h" end
+    -- extract plain numeric id from namespaced id  "leadername:123"
+    local parts = grp_explode(g.id, ":")
+    local plainId = parts[2] or parts[1]
+    grp_SendWhisper("GS|" .. plainId .. "|" .. role, g.creator)
+    lfprint("Signup sent to " .. g.creator .. " as " .. grp_roleLabel(role) .. ".")
+end
+
+-- ============================================================
+-- UI: category dropdown
+-- ============================================================
+function LFG.Grp_InitCategoryDropDown()
+    for i, label in ipairs(LFG.grp_categories) do
+        local id = i
+        -- UIDropDownMenu_CreateInfo does not exist in 3.3.5a; populate a plain table
+        local info = {}
+        info.text = label
+        info.func = function()
+            LFG.grp_categoryFilter = id
+            UIDropDownMenu_SetSelectedID(_G["LFGGrpCategoryDropDown"], id)
+            UIDropDownMenu_SetText(_G["LFGGrpCategoryDropDown"], label)
+            LFG.Grp_UpdateBrowse()
+        end
+        info.checked = LFG.grp_categoryFilter == i
+        UIDropDownMenu_AddButton(info)
+    end
+end
+
+-- ============================================================
+-- Row OnClick
+-- ============================================================
+function LFG.Grp_GroupRowClick()
+    -- 'this' is the row frame
+    local entry = this.data
+    if not entry then return end
+    if LFG.grp_selectedGroup == entry then
+        LFG.grp_selectedGroup = nil
+    else
+        LFG.grp_selectedGroup = entry
+    end
+    LFG.Grp_UpdateBrowse()
+end
+
+function LFG.Grp_InstCheckClick()
+    local inst = this:GetParent().instance
+    if inst then
+        LFG.grp_selectedInst[inst] = this:GetChecked() and true or nil
+    end
+    LFG.Grp_UpdateQueue()
+end
+
+function LFG.Grp_RoleClick(roleIdx)
+    LFG.grp_selectedRoles[roleIdx] = not LFG.grp_selectedRoles[roleIdx]
+    local _, class = UnitClass("player")
+    local roles = LFG.grp_classRoles[class] or {false,false,true}
+    if not roles[roleIdx] then LFG.grp_selectedRoles[roleIdx] = false end
+    LFG.Grp_UpdateQueue()
+end
+
+-- ============================================================
+-- Frame init (called once from Groups tab OnLoad or first Show)
+-- ============================================================
+function LFG.Grp_Init()
+    -- Invalidate instance table cache so it rebuilds against current dungeon data
+    if not LFG_GRP_INSTANCES then
+        LFG_GRP_INSTANCES     = nil
+        LFG_GRP_INSTANCES_MAP = nil
+    end
+    -- Build group rows using LFTGroupEntryTemplate if available,
+    -- otherwise use plain Buttons (fallback)
+    local parent = _G["LFGGrpBrowseContent"]
+    if parent and #LFG.grp_groupRows == 0 then
+        for i = 1, GRP_GROUPS_SHOWN do
+            local fname = "LFGGrpGroupRow" .. i
+            local f
+            if _G["LFTGroupEntryTemplate"] then
+                f = CreateFrame("Button", fname, parent, "LFTGroupEntryTemplate")
+            else
+                f = CreateFrame("Button", fname, parent)
+                f:SetWidth(285); f:SetHeight(GRP_ROW_H)
+                -- minimal sub-widgets
+                local title = f:CreateFontString(fname.."Text","OVERLAY","GameFontNormal")
+                title:SetPoint("TOPLEFT",f,"TOPLEFT",-2,2); title:SetWidth(132); title:SetHeight(22)
+                local sub   = f:CreateFontString(fname.."SubText","OVERLAY","GameFontDisableSmall")
+                sub:SetPoint("BOTTOMLEFT",f,"BOTTOMLEFT",-2,-4); sub:SetWidth(200); sub:SetHeight(20)
+                local lead  = f:CreateFontString(fname.."LeaderText","OVERLAY","GameFontHighlightSmall")
+                lead:SetPoint("BOTTOMRIGHT",f,"BOTTOMRIGHT",0,0); lead:SetJustifyH("RIGHT")
+                local hl    = f:CreateTexture(fname.."Highlight","BACKGROUND")
+                hl:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                hl:SetBlendMode("ADD"); hl:SetAllPoints(f); hl:Hide()
+                -- role icons + numbers
+                for role = 1, 3 do
+                    local icon = f:CreateTexture(fname.."Role"..role.."Icon","ARTWORK")
+                    icon:SetWidth(12); icon:SetHeight(12); icon:SetAlpha(0)
+                    local roleTex = role==1 and "ready_tank" or role==2 and "ready_healer" or "ready_damage"
+                    icon:SetTexture("Interface\\AddOns\\LFG\\images\\"..roleTex)
+                    local num = f:CreateFontString(fname.."Role"..role.."Number","ARTWORK","GameFontNormalSmall")
+                    num:SetHeight(24)
+                    if role == 3 then
+                        icon:SetPoint("RIGHT",f,"RIGHT",0,0)
+                        num:SetPoint("RIGHT",icon,"LEFT",-2,0)
+                    elseif role == 2 then
+                        icon:SetPoint("RIGHT",fname.."Role3Icon","LEFT",-1,0)
+                        num:SetPoint("RIGHT",icon,"LEFT",-2,0)
+                    else
+                        icon:SetPoint("RIGHT",fname.."Role2Icon","LEFT",-1,0)
+                        num:SetPoint("RIGHT",icon,"LEFT",-2,0)
+                    end
+                end
+            end
+            f:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, -GRP_ROW_H * (i-1))
+            f:RegisterForClicks("LeftButtonUp","RightButtonUp")
+            f:SetScript("OnClick", LFG.Grp_GroupRowClick)
+            f:SetScript("OnEnter", function()
+                _G[this:GetName().."Highlight"]:Show()
+                if this.title then
+                    GameTooltip:SetOwner(this, "ANCHOR_TOPRIGHT")
+                    GameTooltip:SetText(this.title, 1,1,1,1,true)
+                    if this.description and this.description ~= "" then
+                        GameTooltip:AddLine(this.description, 1,0.82,0,1,true)
+                    end
+                    GameTooltip:Show()
+                end
+            end)
+            f:SetScript("OnLeave", function()
+                if not this.selected then
+                    local hl = _G[this:GetName().."Highlight"]
+                    if hl then hl:Hide() end
+                end
+                GameTooltip:Hide()
+            end)
+            f:Hide()
+            table.insert(LFG.grp_groupRows, f)
+        end
+    end
+
+    -- Build instance rows
+    local qparent = _G["LFGGrpQueueContent"]
+    if qparent and #LFG.grp_instRows == 0 then
+        for i = 1, GRP_INST_SHOWN do
+            local fname = "LFGGrpInstRow" .. i
+            local f
+            if _G["LFTInstanceEntryTemplate"] then
+                f = CreateFrame("Frame", fname, qparent, "LFTInstanceEntryTemplate")
+            else
+                f = CreateFrame("Frame", fname, qparent)
+                f:SetWidth(293); f:SetHeight(GRP_INST_H)
+                local cb = CreateFrame("CheckButton", fname.."CheckButton", f, "UICheckButtonTemplate")
+                cb:SetWidth(20); cb:SetHeight(20); cb:SetPoint("TOPLEFT",f,"TOPLEFT",0,0)
+                cb:HitRectInsets(0,-280,0,0)
+                cb:SetScript("OnClick", LFG.Grp_InstCheckClick)
+                local nameFS = f:CreateFontString(fname.."Name","OVERLAY","GameFontNormal")
+                nameFS:SetPoint("LEFT",f,"LEFT",22,0); nameFS:SetWidth(200); nameFS:SetHeight(24)
+                nameFS:SetJustifyH("LEFT")
+                local levFS = f:CreateFontString(fname.."Levels","OVERLAY","GameFontNormal")
+                levFS:SetPoint("RIGHT",f,"RIGHT",-6,0); levFS:SetWidth(72); levFS:SetHeight(24)
+                levFS:SetJustifyH("RIGHT")
+                local hl = f:CreateTexture(fname.."Highlight","BACKGROUND")
+                hl:SetTexture("Interface\\Buttons\\UI-Listbox-Highlight2")
+                hl:SetAllPoints(f); hl:Hide()
+                f.name = nameFS; f.levels = levFS
+                f.highlight = hl; f.checkButton = cb
+            end
+            f:SetPoint("TOPLEFT", qparent, "TOPLEFT", 0, -GRP_INST_H * (i-1))
+            f:Hide()
+            table.insert(LFG.grp_instRows, f)
+        end
+    end
+
+    -- Category dropdown
+    local dd = _G["LFGGrpCategoryDropDown"]
+    if dd and not dd._initialized then
+        UIDropDownMenu_Initialize(dd, LFG.Grp_InitCategoryDropDown)
+        UIDropDownMenu_SetWidth(dd, 120)
+        UIDropDownMenu_SetSelectedID(dd, LFG.grp_categoryFilter)
+        UIDropDownMenu_SetText(dd, LFG.grp_categories[LFG.grp_categoryFilter])
+        dd._initialized = true
+    end
+
+    -- Role buttons: disable unavailable roles for this class
+    local _, class = UnitClass("player")
+    local classRoles = LFG.grp_classRoles[class] or {false,false,true}
+    for i = 1, 3 do
+        if not classRoles[i] then LFG.grp_selectedRoles[i] = false end
+        local rb = _G["LFGGrpRole"..i.."Check"]
+        if rb then
+            rb:SetChecked(LFG.grp_selectedRoles[i])
+            if not classRoles[i] then rb:Disable() end
+        end
+    end
+
+    LFG.Grp_SwitchSubTab(LFG.grp_currentTab)
+end
+
+-- ============================================================
+-- Ticker (periodic broadcasts, match scans, prune)
+-- ============================================================
+local LFGGrpTicker = CreateFrame("Frame")
+LFGGrpTicker:SetScript("OnUpdate", function()
+    local now = GetTime()
+    local t = LFG.grp_ticker
+    if LFG.grp_queueStatus == "queued" and (now - t.lastQueue) > GRP_QUEUE_BROADCAST then
+        t.lastQueue = now
+        grp_broadcastQueue()
+    end
+    if LFG.grp_listedGroup and (now - t.lastGroup) > GRP_GROUP_BROADCAST then
+        t.lastGroup = now
+        grp_broadcastMyGroup("GU")
+    end
+    if (now - t.lastScan) > GRP_MATCH_SCAN then
+        t.lastScan = now
+        grp_scanForMatch()
+    end
+    if (now - t.lastPrune) > GRP_PRUNE_INTERVAL then
+        t.lastPrune = now
+        grp_pruneQueue()
+        grp_pruneGroups()
+        if LFG.tab == 3 and LFG.grp_currentTab == 1 then
+            LFG.Grp_UpdateBrowse()
+        end
+    end
 end)
+
+-- ============================================================
+-- Hook into existing LFGComms event handler
+-- Additions to CHAT_MSG_CHANNEL and CHAT_MSG_ADDON
+-- ============================================================
+-- These are called from the hook we already added in the base code.
+-- LFG.Grp_HandleChannelMsg  -- called from CHAT_MSG_CHANNEL block
+-- LFG.Grp_HandleAddonMsg    -- called from CHAT_MSG_ADDON block
+
+-- ============================================================
+-- Logout: cancel group + leave queue
+-- ============================================================
+local _grp_origLogout = LFG.onPlayerLogout
+function LFG.onPlayerLogout()
+    if LFG.grp_listedGroup then
+        local g = LFG.grp_listedGroup
+        local msg = string.gsub(GRP_CMSG_PREFIX .. "GD|" .. tostring(g.id), "|", "||")
+        SendChatMessage(msg, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID,
+                        GetChannelName(LFG.channel))
+        LFG.grp_listedGroup = nil
+    end
+    if LFG.grp_queueStatus == "queued" then
+        local msg = string.gsub(GRP_CMSG_PREFIX .. "L|" .. me, "|", "||")
+        SendChatMessage(msg, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID,
+                        GetChannelName(LFG.channel))
+        LFG.grp_queueStatus = nil
+    end
+    if _grp_origLogout then _grp_origLogout() end
+end
+
