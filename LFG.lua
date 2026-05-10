@@ -19,6 +19,7 @@ ROLE_DAMAGE_TOOLTIP = 'Indicates that you are willing to\ntake on the role of de
 ROLE_BAD_TOOLTIP = 'Your class may not perform this role.'
 
 LFG.tab = 1
+LFG.WarnedPlayers = LFG.WarnedPlayers or {}
 LFG.dungeonsSpam = {}
 LFG.dungeonsSpamDisplay = {}
 LFG.dungeonsSpamDisplayLFM = {}
@@ -673,6 +674,15 @@ LFGComms:SetScript("OnEvent", function()
 
         if event == 'CHAT_MSG_ADDON' and arg1 == LFG_ADDON_CHANNEL then
             lfdebug(arg4 .. ' says : ' .. arg2)
+            -- Fix ":danage" typo from old clients so role parses correctly,
+            -- and whisper them once to prompt an update (throttled per player).
+            if string.find(arg2, ":danage") then
+                arg2 = string.gsub(arg2, ":danage", ":damage")
+                if not LFG.WarnedPlayers[arg4] then
+                    SendChatMessage("LFG Alert: Your version has a typo (danage). Please update to fix your icons!", "WHISPER", nil, arg4)
+                    LFG.WarnedPlayers[arg4] = true
+                end
+            end
             if string.sub(arg2, 1, 11) == 'objectives:' and arg4 ~= me then
                 local objEx = StringSplit(arg2, ':')
                 if LFG.groupFullCode ~= objEx[2] then
@@ -1335,7 +1345,7 @@ LFGComms:SetScript("OnEvent", function()
                 local foundLongEx = StringSplit(arg1, ' ')
 
                 for i, found in ipairs(foundLongEx) do
-                    if string.len(found) > 0 then
+                    if string.len(found) > 0 and string.sub(found, 1, 6) == 'found:' then
                         local foundEx = StringSplit(found, ':')
                         local mRole = foundEx[2]
                         local mDungeon = foundEx[3]
