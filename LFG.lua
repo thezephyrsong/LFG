@@ -4819,6 +4819,12 @@ LFG.eliteEncounters = {
     ['Jintha\'Alor'] = { minLevel = 45, maxLevel = 60, code = 'ja', queued = false, canQueue = true, background = 'jinthaalor', myRole = '' },
     ['Felstone Fortress'] = { minLevel = 50, maxLevel = 60, code = 'ff', queued = false, canQueue = true, background = 'felstonefort', myRole = '' },
     ['Silithus Dailies'] = { minLevel = 60, maxLevel = 60, code = 'silithusd', queued = false, canQueue = true, background = 'silithusdailies', myRole = '' },
+    ['Arena of Blood'] = { minLevel = 38, maxLevel = 45, code = 'aob', queued = false, canQueue = true, background = 'arenaofblood', myRole = '' },
+    ['Stonewatch Keep'] = { minLevel = 20, maxLevel = 30, code = 'swk', queued = false, canQueue = true, background = 'stonewatchkeep', myRole = '' },
+    ['Mosh\'ogg Ogres'] = { minLevel = 30, maxLevel = 40, code = 'moshogg', queued = false, canQueue = true, background = 'moshoggogres', myRole = '' },
+    ['Durnholde Keep'] = { minLevel = 35, maxLevel = 45, code = 'durnholde', queued = false, canQueue = true, background = 'durnholdekeep', myRole = '' },
+    ['Stromgarde Keep'] = { minLevel = 35, maxLevel = 45, code = 'stromgarde', queued = false, canQueue = true, background = 'stromgardekeep', myRole = '' },
+    ['Lake Mennar'] = { minLevel = 48, maxLevel = 56, code = 'lmennar', queued = false, canQueue = true, background = 'lakemennar', myRole = '' },
 }
 
 LFG.bosses = {
@@ -5089,6 +5095,28 @@ LFG.bosses = {
     },
     ['silithusd'] = {
         --'Vile Priestess Hexx',
+    },
+    ['aob'] = {
+        --'',
+    },
+    ['swk'] = {
+        --'Darkmaster Gandogar',
+    },
+    ['moshogg'] = {
+        --'Kor\'gresh Coldrage',
+    },
+    ['durnholde'] = {
+        --'Shuja Grimtotem',
+        --'Drudge',
+        --'Skullbreaker',
+    },
+    ['stromgarde'] = {
+        --'Lord Falconcrest',
+        --'Boulderfist Lord',
+        --'Syndicate Assassin',
+    },
+    ['lmennar'] = {
+        --'Azrathus',
     },
 };
 
