@@ -347,7 +347,7 @@ end)
 -- objectives
 local LFGObjectives = CreateFrame("Frame")
 LFGObjectives:Hide()
---LFGObjectives:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
+LFGObjectives:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
 LFGObjectives.collapsed = false
 LFGObjectives.closedByUser = false
 LFGObjectives.lastObjective = 0
@@ -612,7 +612,7 @@ LFGGroupReadyFrameCloser:SetScript("OnUpdate", function()
         lfprint('A member of your group has not accepted the invitation. You are rejoining the queue.')
         if LFG.isLeader then
             leaveQueue('LFGGroupReadyFrameCloser isleader = true')
-            LFG.fillAvailableDungeons('queueAgain' == 'queueAgain')
+            LFG.fillAvailableDungeons(true) -- queueAfter = true
         end
         if LFGGroupReadyFrameCloser.response == 'notReady' then
             --doesnt trigger for leader, cause it leaves queue
@@ -666,11 +666,9 @@ LFGComms:SetScript("OnEvent", function()
             lfdebug(arg5) -- blank
             lfdebug('channel index = ' .. LFG.channelIndex) -- blank
         end
-        if event == 'CHAT_MSG_CHANNEL_NOTICE' then
-            if arg9 == LFG.channel and arg1 == 'YOU_JOINED' then
-                LFG.channelIndex = arg8
-            end
-        end
+        -- NOTE: CHAT_MSG_CHANNEL_NOTICE is intentionally handled only in
+        -- channelMonitorFrame (below), which includes slot-1 conflict detection.
+        -- Do NOT duplicate it here.
 
         if event == 'CHAT_MSG_ADDON' and arg1 == LFG_ADDON_CHANNEL then
             lfdebug(arg4 .. ' says : ' .. arg2)
@@ -1552,23 +1550,21 @@ function lfdebug(a)
 end
 
 local hookChatFrame = function(frame)
-    lfdebug('chat frame hook using GetGameTime()')
+    lfdebug('chat frame hook - syncing timer to current local second')
 
-    -- Get hour and minute from server
-    local hour, minute = GetGameTime()
-
-    -- Convert hours and minutes to seconds
-    local totalSeconds = (hour * 3600) + (minute * 60)
-
-    -- Calculate just the seconds portion (0-59)
-    LFGTime.second = totalSeconds % 60
+    -- GetGameTime() only gives hour+minute (integers), so (h*3600+m*60)%60
+    -- is always 0 and useless for sub-minute sync. Use local clock seconds
+    -- as the timer seed instead. All clients on the same realm will be
+    -- within a second of each other, which is sufficient for the 30-second
+    -- spam windows.
+    LFGTime.second = tonumber(date("%S", time()))
     LFGTime.diff = 0
 
     -- Reset and start the timer
     LFGTime:Hide()
     LFGTime:Show()
 
-    lfdebug('Using server time: ' .. hour .. ':' .. minute .. ' (second value: ' .. LFGTime.second .. ')')
+    lfdebug('Timer seeded at local second: ' .. LFGTime.second)
 end
 
 
@@ -1731,7 +1727,7 @@ LFG:SetScript("OnEvent", function()
                 else
                     -- disable dungeon checks if i have more than one and i join a party
                     for _, data in next, LFG.dungeons do
-                        data.queue = false
+                        data.queued = false
                         if _G["Dungeon_" .. data.code .. '_CheckButton'] then
                             _G["Dungeon_" .. data.code .. '_CheckButton']:SetChecked(false)
                         end
@@ -1864,34 +1860,18 @@ function LFG.hideButtonTextures(buttonName)
     local button = _G[buttonName]
     if button then
         lfdebug("Hiding textures for button: " .. buttonName)
-        
-        -- More aggressive texture hiding
-        button:SetNormalTexture(nil)
-        button:SetPushedTexture(nil) 
-        button:SetHighlightTexture(nil)
-        button:SetDisabledTexture(nil)
-        
-        -- Hide existing texture objects
-        local normalTexture = button:GetNormalTexture()
-        if normalTexture then
-            normalTexture:SetTexture("")
-            normalTexture:Hide()
-        end
-        
-        local pushedTexture = button:GetPushedTexture()
-        if pushedTexture then
-            pushedTexture:SetTexture("")
-            pushedTexture:Hide()
-        end
-        
-        local highlightTexture = button:GetHighlightTexture()
-        if highlightTexture then
-            highlightTexture:SetTexture("")
-            highlightTexture:Hide()
-        end
-        
-        -- Make the button completely transparent
-        button:SetAlpha(0)
+
+        -- Clear all default button artwork (normal/pushed/highlight/disabled).
+        -- We pass "" rather than nil so the texture slot is overwritten with a
+        -- transparent texture instead of recreated on the next layout pass.
+        button:SetNormalTexture("")
+        button:SetPushedTexture("")
+        button:SetHighlightTexture("")
+        button:SetDisabledTexture("")
+
+        -- Do NOT call button:SetAlpha(0) – that makes the button fully
+        -- invisible AND unclickable while keeping it registered.
+        -- The custom artwork in the XML/skin already handles the appearance.
     else
         lfdebug("Button not found: " .. buttonName)
     end
@@ -2595,7 +2575,7 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             if LFG.level == data.minLevel + 2 or LFG.level == data.minLevel + 3 then
                 color = COLOR_ORANGE
             end
-            if LFG.level == data.minLevel + 4 or LFG.level == data.maxLevel + 5 then
+            if LFG.level == data.minLevel + 4 or LFG.level == data.minLevel + 5 then
                 color = COLOR_GREEN
             end
 
@@ -2650,7 +2630,7 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             if LFG.level == data.minLevel + 2 or LFG.level == data.minLevel + 3 then
                 color = COLOR_ORANGE
             end
-            if LFG.level == data.minLevel + 4 or LFG.level == data.maxLevel + 5 then
+            if LFG.level == data.minLevel + 4 or LFG.level == data.minLevel + 5 then
                 color = COLOR_GREEN
             end
 
@@ -3429,6 +3409,12 @@ function LFG.sendLFGMessage(role)
     end
     lfg_text = string.sub(lfg_text, 1, string.len(lfg_text) - 1)
 
+    -- Guard: all codes were suppressed → nothing to send
+    if lfg_text == '' then
+        lfdebug('sendLFGMessage: all codes suppressed for role ' .. role .. ', skipping send')
+        return
+    end
+
     SendChatMessage(lfg_text, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
 end
 
@@ -3606,9 +3592,9 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
 end
 
 function LFG.deQueueAll()
-    for _, data in next, LFG.dungeons do
+    for dungeon, data in next, LFG.dungeons do
         if data.queued then
-            LFG.dungeons[data.code].queued = false
+            LFG.dungeons[dungeon].queued = false
         end
     end
 end
@@ -3761,7 +3747,7 @@ function LFG.LFGBrowse_Update()
                 if LFG.level == data.minLevel + 2 or LFG.level == data.minLevel + 3 then
                     color = COLOR_ORANGE
                 end
-                if LFG.level == data.minLevel + 4 or LFG.level == data.maxLevel + 5 then
+                if LFG.level == data.minLevel + 4 or LFG.level == data.minLevel + 5 then
                     color = COLOR_GREEN
                 end
 
@@ -4264,7 +4250,7 @@ function LFG_ShowMinimap()
 
         _G['LFGGroupStatus']:Show()
     else
-        GameTooltip:SetOwner(this, "ANCHOR_LEFT", 0, -110)
+        GameTooltip:SetOwner(_G['LFG_Minimap'], "ANCHOR_LEFT", 0, -110)
         GameTooltip:AddLine('Looking For Group', 1, 1, 1)
         GameTooltip:AddLine('Left-click to open LFG.')
         GameTooltip:AddLine('Drag to move.')
@@ -5158,10 +5144,10 @@ function LFG.playerClass(name)
 end
 
 function LFG.ver(ver)
-    return tonumber(string.sub(ver, 1, 1)) * 1000 +
-            tonumber(string.sub(ver, 3, 3)) * 100 +
-            tonumber(string.sub(ver, 5, 5)) * 10 +
-            tonumber(string.sub(ver, 7, 7)) * 1
+    return (tonumber(string.sub(ver, 1, 1)) or 0) * 1000 +
+            (tonumber(string.sub(ver, 3, 3)) or 0) * 100 +
+            (tonumber(string.sub(ver, 5, 5)) or 0) * 10 +
+            (tonumber(string.sub(ver, 7, 7)) or 0)
 end
 
 function LFG.ucFirst(a)
