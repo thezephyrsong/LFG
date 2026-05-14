@@ -71,7 +71,12 @@ LFG.foundGroup = false
 LFG.inGroup = false
 LFG.isLeader = false
 LFG.classRun = false          -- opt-in: only match one player per class
-LFG.seenClasses = {}          -- [dungeonCode][playerName] = class, populated from LFG: broadcasts
+LFG.seenClasses = {}          -- [dungeonCode][playerName] = {class, cr}, populated from LFG: broadcasts
+LFG.crLeader = false          -- true when this client self-elected as CR leader (distinct from IsPartyLeader)
+LFG.crCandidates = {}         -- [dungeonCode][playerName] = time(), CR seekers seen this cycle
+LFG.crElectionTime = {}       -- [dungeonCode] = time() when we first saw enough candidates to start watching
+LFG.CR_ELECTION_WAIT = 35     -- seconds to wait for a natural LFM before self-electing
+LFG.CR_LEADER_TIMEOUT = 65    -- seconds of silence before re-running election
 LFG.LFMGroup = {}
 LFG.LFMDungeonCode = ''
 LFG.currentGroupSize = 1
@@ -1323,6 +1328,8 @@ LFGComms:SetScript("OnEvent", function()
                 local lfmTank = tonumber(lfmEx[3]) or 0
                 local lfmHealer = tonumber(lfmEx[4]) or 0
                 local lfmDamage = tonumber(lfmEx[5]) or 0
+                -- lfmEx[6] = 'cr' if this LFM is from a CR leader (set in sendLFMStats when crLeader)
+                local lfmCR = lfmEx[6] == 'cr'
 
                 if mDungeonCode then
 
@@ -1335,6 +1342,20 @@ LFGComms:SetScript("OnEvent", function()
                     LFG.incDungeonssSpamRole(mDungeonCode, 'healer', lfmHealer)
                     LFG.incDungeonssSpamRole(mDungeonCode, 'damage', lfmDamage)
                     LFG.updateDungeonsSpamDisplay(mDungeonCode, true, lfmTank + lfmHealer + lfmDamage)
+
+                    -- CR step-down: if we're the elected CR leader but this sender
+                    -- sorts alphabetically before us, they should lead instead.
+                    if lfmCR and LFG.crLeader and LFG.LFMDungeonCode == mDungeonCode then
+                        if arg2 < me then
+                            LFG.crStepDown(mDungeonCode, arg2)
+                        end
+                    end
+
+                    -- If we're a CR seeker and see a CR LFM, reset our election clock
+                    -- so we don't self-elect while a valid leader is active.
+                    if lfmCR and LFG.classRun and LFG.classRunEligible(mDungeonCode) then
+                        LFG.crElectionTime[mDungeonCode] = nil
+                    end
                 end
             end
         end
@@ -1358,12 +1379,29 @@ LFGComms:SetScript("OnEvent", function()
                         end
 
                         if string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
-                            local fdName = LFG.dungeonNameFromCode(mDungeon)
-                            if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
-                            lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
-
-                            SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
-                            LFG.foundGroup = true
+                            -- CR guard: if we're a CR seeker queued for an eligible dungeon,
+                            -- reject found: messages from leaders who didn't broadcast :cr.
+                            -- This prevents v1 leaders or non-CR v2 leaders from silently
+                            -- pulling us into a regular group and bypassing class checks.
+                            if LFG.classRun and LFG.classRunEligible(mDungeon) then
+                                local senderIsCR = LFG.crCandidates[mDungeon] and
+                                                   LFG.crCandidates[mDungeon][arg2] ~= nil
+                                if not senderIsCR then
+                                    lfdebug('CR guard: ignoring found: from non-CR leader ' .. arg2 .. ' for ' .. mDungeon)
+                                else
+                                    local fdName = LFG.dungeonNameFromCode(mDungeon)
+                                    if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
+                                    lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
+                                    SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                    LFG.foundGroup = true
+                                end
+                            else
+                                local fdName = LFG.dungeonNameFromCode(mDungeon)
+                                if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
+                                lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
+                                SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                LFG.foundGroup = true
+                            end
                         end
                     end
                 end
@@ -1440,13 +1478,21 @@ LFGComms:SetScript("OnEvent", function()
                         LFG.seenClasses[mDungeonCode][arg2] = { class = mClass, cr = mClassRun }
                     end
 
+                    -- Track CR candidates for leader election
+                    if mClassRun and mDungeonCode and LFG.classRunEligible(mDungeonCode) then
+                        if not LFG.crCandidates[mDungeonCode] then
+                            LFG.crCandidates[mDungeonCode] = {}
+                        end
+                        LFG.crCandidates[mDungeonCode][arg2] = time()
+                    end
+
                     if mDungeonCode and mRole then
 
                         for _, data in next, LFG.dungeons do
                             if data.queued and data.code == mDungeonCode then
 
                                 --LFM forming
-                                if LFG.isLeader then
+                                if LFG.isLeader or LFG.crLeader then
                                     -- Class run leaders only slot applicants who also flagged cr.
                                     -- Regular leaders ignore the cr flag entirely.
                                     if LFG.classRun and LFG.classRunEligible(mDungeonCode) and not mClassRun then
@@ -1979,6 +2025,9 @@ function LFG.init()
     LFG.groupFullCode = ''
     LFG.classRun = _G['ClassRunCheckButton'] and _G['ClassRunCheckButton']:GetChecked() or false
     LFG.seenClasses = {}
+    LFG.crLeader = false
+    LFG.crCandidates = {}
+    LFG.crElectionTime = {}
     LFG.acceptNextInvite = false
     LFG.currentGroupSize = GetNumPartyMembers() + 1
 
@@ -2098,6 +2147,12 @@ LFGQueue:SetScript("OnUpdate", function()
             if LFG.isLeader then
                 LFG.sendLFMStats(LFG.LFMDungeonCode)
                 this.spammed.lfm = true
+            elseif LFG.crLeader then
+                LFG.sendLFMStats(LFG.LFMDungeonCode)
+                this.spammed.lfm = true
+            else
+                -- Run election check on every cycle for CR seekers
+                LFG.crCheckElection()
             end
         end
 
@@ -3498,7 +3553,12 @@ function LFG.sendLFMStats(code)
         damage = damage + 1
     end
 
-    SendChatMessage("LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    -- Append :cr so receiving clients know this LFM is from a CR leader
+    local crSuffix = LFG.crLeader and ':cr' or ''
+    SendChatMessage("LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    if LFG.crLeader then
+        LFG.crLastLFMTime = time()
+    end
 end
 
 function LFG.isNeededInLFMGroup(role, name, code)
@@ -3649,6 +3709,14 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
             LFG.seenClasses[dungeonCode][name] = nil
         end
     end
+    -- Clear stale CR candidate entry
+    for dungeonCode, _ in next, LFG.crCandidates do
+        if LFG.crCandidates[dungeonCode] then
+            LFG.crCandidates[dungeonCode][name] = nil
+        end
+    end
+    -- Re-run election check in case the departed player was our elected leader
+    LFG.crCheckElection()
 end
 
 function LFG.deQueueAll()
@@ -4552,6 +4620,11 @@ function leaveQueue(callData)
     LFGGroupReadyFrameCloser:Hide()
     LFGGroupReadyFrameCloser.response = ''
 
+    -- Clear CR election state
+    LFG.crLeader = false
+    LFG.crCandidates = {}
+    LFG.crElectionTime = {}
+
     LFGQueue:Hide()
     LFGRoleCheck:Hide()
     lfdebug('LFGRoleCheck:Hide() in leaveQueue')
@@ -5220,6 +5293,108 @@ local CLASS_RUN_ELIGIBLE = {
 }
 function LFG.classRunEligible(dungeonCode)
     return CLASS_RUN_ELIGIBLE[dungeonCode] == true
+end
+
+-- Returns the alphabetically-first name among CR candidates for a dungeon,
+-- including ourselves. This is the deterministic tie-break for leader election.
+function LFG.crElectLeader(dungeonCode)
+    local candidates = {}
+    if LFG.crCandidates[dungeonCode] then
+        for name, _ in pairs(LFG.crCandidates[dungeonCode]) do
+            table.insert(candidates, name)
+        end
+    end
+    -- Always include ourselves if we're a CR seeker for this dungeon
+    local selfIncluded = false
+    for _, n in ipairs(candidates) do
+        if n == me then selfIncluded = true break end
+    end
+    if not selfIncluded and LFG.classRun then
+        table.insert(candidates, me)
+    end
+    if #candidates == 0 then return nil end
+    table.sort(candidates)
+    return candidates[1]
+end
+
+-- Called when this client wins the election for a dungeon.
+-- Sets up LFM broadcast state without touching IsPartyLeader().
+function LFG.crBecomeLeader(dungeonCode)
+    if LFG.crLeader then return end -- already leading
+    LFG.crLeader = true
+    LFG.LFMDungeonCode = dungeonCode
+    -- Seed the group with ourselves in our own role
+    if not LFG.group[dungeonCode] then
+        LFG.group[dungeonCode] = { tank = '', healer = '', damage1 = '', damage2 = '', damage3 = '' }
+    end
+    if string.find(LFG_ROLE, 'tank', 1, true) then
+        LFG.group[dungeonCode].tank = me
+    elseif string.find(LFG_ROLE, 'healer', 1, true) then
+        LFG.group[dungeonCode].healer = me
+    elseif string.find(LFG_ROLE, 'damage', 1, true) then
+        if LFG.group[dungeonCode].damage1 == '' then
+            LFG.group[dungeonCode].damage1 = me
+        end
+    end
+    LFG.crLastLFMTime = time()
+    lfdebug('crBecomeLeader: elected for ' .. dungeonCode)
+    lfprint('[LFG] Class Run: you have been elected leader for ' .. LFG.dungeonNameFromCode(dungeonCode) .. '. Forming group...')
+    LFG.sendLFMStats(dungeonCode)
+end
+
+-- Called when we see an LFM from someone who should be leader instead of us.
+-- Steps down from CR leadership gracefully.
+function LFG.crStepDown(dungeonCode, newLeaderName)
+    if not LFG.crLeader then return end
+    lfdebug('crStepDown: ' .. newLeaderName .. ' takes over for ' .. dungeonCode)
+    lfprint('[LFG] Class Run: ' .. newLeaderName .. ' is now leading. Switching to applicant mode.')
+    LFG.crLeader = false
+    LFG.LFMDungeonCode = ''
+    -- Clear our group table so we re-enter as an applicant
+    LFG.group[dungeonCode] = { tank = '', healer = '', damage1 = '', damage2 = '', damage3 = '' }
+    if string.find(LFG_ROLE, 'tank', 1, true) then
+        LFG.group[dungeonCode].tank = me
+    end
+end
+
+-- Run on the spam timer. Checks whether election conditions are met for each
+-- queued CR dungeon and self-elects if appropriate.
+function LFG.crCheckElection()
+    if not LFG.classRun or LFG.inGroup or LFG.isLeader then return end
+
+    for _, data in next, LFG.dungeons do
+        if data.queued and LFG.classRunEligible(data.code) then
+            local code = data.code
+            local elected = LFG.crElectLeader(code)
+
+            if elected == me then
+                -- Start the election clock if not already started
+                if not LFG.crElectionTime[code] then
+                    LFG.crElectionTime[code] = time()
+                    lfdebug('crCheckElection: starting election clock for ' .. code)
+                end
+                -- Self-elect once the wait period has passed with no natural LFM
+                local waited = time() - LFG.crElectionTime[code]
+                if waited >= LFG.CR_ELECTION_WAIT and not LFG.crLeader then
+                    LFG.crBecomeLeader(code)
+                end
+            else
+                -- Someone else should be leader; reset our clock
+                LFG.crElectionTime[code] = nil
+            end
+
+            -- Leader timeout: if we're leader and haven't sent LFM recently,
+            -- or if elected leader went silent, re-run election
+            if LFG.crLeader and LFG.LFMDungeonCode == code then
+                if LFG.crLastLFMTime and (time() - LFG.crLastLFMTime) > LFG.CR_LEADER_TIMEOUT then
+                    lfdebug('crCheckElection: leader timeout, stepping down for re-election')
+                    LFG.crLeader = false
+                    LFG.crElectionTime[code] = nil
+                    LFG.crCandidates[code] = nil
+                end
+            end
+        end
+    end
 end
 
 -- Returns true if the given class is already slotted in the group for this dungeon.
