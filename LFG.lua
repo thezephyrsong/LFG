@@ -9,7 +9,7 @@ local addonVer = GetAddOnMetadata("LFG", "Version")
 -- Protocol version is independent of addonVer. Increment this (not addonVer)
 -- when chat message formats change (e.g. new fields in goingWith/LFG: strings).
 -- Players on different protocol versions cannot communicate correctly.
-local LFG_PROTOCOL_VERSION = 1
+local LFG_PROTOCOL_VERSION = 2
 local LFG_ADDON_CHANNEL = 'LFG'
 local groupsFormedThisSession = 0
 
@@ -70,6 +70,8 @@ LFG.ROLE_CHECK_TIME = 50
 LFG.foundGroup = false
 LFG.inGroup = false
 LFG.isLeader = false
+LFG.classRun = false          -- opt-in: only match one player per class
+LFG.seenClasses = {}          -- [dungeonCode][playerName] = class, populated from LFG: broadcasts
 LFG.LFMGroup = {}
 LFG.LFMDungeonCode = ''
 LFG.currentGroupSize = 1
@@ -1426,6 +1428,17 @@ LFGComms:SetScript("OnEvent", function()
                     local spamSplit = StringSplit(lfg, ':')
                     local mDungeonCode = spamSplit[2]
                     local mRole = spamSplit[3] --other's role
+                    local mClass = spamSplit[4] -- nil on old clients (protocol v1)
+                    -- cr flag at position 5 signals the applicant wants a class run
+                    local mClassRun = spamSplit[5] == 'cr'
+
+                    -- Store class and cr preference for class run matching (protocol v2+)
+                    if mClass and mClass ~= '' and mDungeonCode then
+                        if not LFG.seenClasses[mDungeonCode] then
+                            LFG.seenClasses[mDungeonCode] = {}
+                        end
+                        LFG.seenClasses[mDungeonCode][arg2] = { class = mClass, cr = mClassRun }
+                    end
 
                     if mDungeonCode and mRole then
 
@@ -1434,25 +1447,31 @@ LFGComms:SetScript("OnEvent", function()
 
                                 --LFM forming
                                 if LFG.isLeader then
-                                    if mRole == 'tank' then
-                                        if LFG.addTank(mDungeonCode, arg2) then
-                                            foundMessage = foundMessage .. 'found:tank:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                    -- Class run leaders only slot applicants who also flagged cr.
+                                    -- Regular leaders ignore the cr flag entirely.
+                                    if LFG.classRun and LFG.classRunEligible(mDungeonCode) and not mClassRun then
+                                        lfdebug('classRun: skipping ' .. arg2 .. ' - no cr flag')
+                                    else
+                                        if mRole == 'tank' then
+                                            if LFG.addTank(mDungeonCode, arg2) then
+                                                foundMessage = foundMessage .. 'found:tank:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                            end
                                         end
-                                    end
-                                    if mRole == 'healer' then
-                                        if LFG.addHealer(mDungeonCode, arg2) then
-                                            foundMessage = foundMessage .. 'found:healer:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                        if mRole == 'healer' then
+                                            if LFG.addHealer(mDungeonCode, arg2) then
+                                                foundMessage = foundMessage .. 'found:healer:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                            end
                                         end
-                                    end
-                                    if mRole == 'damage' then
-                                        if LFG.addDamage(mDungeonCode, arg2) then
-                                            foundMessage = foundMessage .. 'found:damage:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                        if mRole == 'damage' then
+                                            if LFG.addDamage(mDungeonCode, arg2) then
+                                                foundMessage = foundMessage .. 'found:damage:' .. mDungeonCode .. ':' .. arg2 .. ':' .. prioMembers .. ':' .. prioObjectives .. ' '
+                                            end
                                         end
+                                        if foundMessage ~= '' then
+                                            SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                        end
+                                        return false
                                     end
-                                    if foundMessage ~= '' then
-                                        SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
-                                    end
-                                    return false
                                 end
 
                                 -- LFG forming
@@ -1958,6 +1977,8 @@ function LFG.init()
     LFG.group = {}
     LFG.oneGroupFull = false
     LFG.groupFullCode = ''
+    LFG.classRun = _G['ClassRunCheckButton'] and _G['ClassRunCheckButton']:GetChecked() or false
+    LFG.seenClasses = {}
     LFG.acceptNextInvite = false
     LFG.currentGroupSize = GetNumPartyMembers() + 1
 
@@ -2825,6 +2846,15 @@ function LFG.addTank(dungeon, name, faux, add)
         return false
     end
 
+    -- Class run: reject if another player of the same class is already slotted
+    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+        local class = LFG.playerClass(name)
+        if LFG.classConflictsInGroup(dungeon, class) then
+            lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
+            return false
+        end
+    end
+
     if LFG.isEliteEncounter(dungeon) then
         -- For Elite Encounters, allow any role to fill any slot
         if LFG.group[dungeon].tank == '' then
@@ -2882,6 +2912,15 @@ function LFG.addHealer(dungeon, name, faux, add)
             LFG.group[dungeon].damage3 == name or
             LFG.group[dungeon].tank == name then
         return false
+    end
+
+    -- Class run: reject if another player of the same class is already slotted
+    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+        local class = LFG.playerClass(name)
+        if LFG.classConflictsInGroup(dungeon, class) then
+            lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
+            return false
+        end
     end
 
     if LFG.isEliteEncounter(dungeon) then
@@ -2973,6 +3012,15 @@ function LFG.addDamage(dungeon, name, faux, add)
             LFG.group[dungeon].damage2 == name or
             LFG.group[dungeon].damage3 == name then
         return false
+    end
+
+    -- Class run: reject if another player of the same class is already slotted
+    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+        local class = LFG.playerClass(name)
+        if LFG.classConflictsInGroup(dungeon, class) then
+            lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
+            return false
+        end
     end
 
     if LFG.isEliteEncounter(dungeon) then
@@ -3399,12 +3447,18 @@ end
 
 function LFG.sendLFGMessage(role)
 
+    local myClass = LFG.class ~= '' and LFG.class or LFG.playerClass(me)
+    local crFlag = LFG.classRun and ':cr' or ''
     local lfg_text = ''
     for code, _ in pairs(LFG.group) do
         if LFG.supress[code] == role then
             LFG.supress[code] = ''
         else
-            lfg_text = 'LFG:' .. code .. ':' .. role .. ' ' .. lfg_text
+            -- Format: LFG:<dungeonCode>:<role>:<class>[:<cr>]
+            -- class field read by protocol v2+ leaders for class run matching.
+            -- cr flag (optional) signals the player wants a class run group.
+            -- Old clients ignore extra fields safely.
+            lfg_text = 'LFG:' .. code .. ':' .. role .. ':' .. myClass .. crFlag .. ' ' .. lfg_text
         end
     end
     lfg_text = string.sub(lfg_text, 1, string.len(lfg_text) - 1)
@@ -3589,6 +3643,12 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
             LFG.group[dungeonCode].damage3 = ''
         end
     end
+    -- Clear stale class data so a returning player on a different class isn't falsely rejected
+    for dungeonCode, _ in next, LFG.seenClasses do
+        if LFG.seenClasses[dungeonCode] then
+            LFG.seenClasses[dungeonCode][name] = nil
+        end
+    end
 end
 
 function LFG.deQueueAll()
@@ -3701,6 +3761,22 @@ LFG.browseNames = {}
 
 function LFG.LFGBrowse_Update()
     lfdebug('LFGBrowse_Update time is ' .. LFGTime.second)
+
+    -- Show the Class Run checkbox if any eligible dungeon is currently visible
+    -- in the browse list (i.e. within level range), regardless of queue state.
+    local showClassRun = false
+    for _, data in next, LFG.dungeons do
+        if LFG.classRunEligible(data.code) and LFG.level >= data.minLevel then
+            showClassRun = true
+            break
+        end
+    end
+    if _G['ClassRunCheckButton'] then
+        if showClassRun then _G['ClassRunCheckButton']:Show() else _G['ClassRunCheckButton']:Hide() end
+    end
+    if _G['ClassRunLabel'] then
+        if showClassRun then _G['ClassRunLabel']:Show() else _G['ClassRunLabel']:Hide() end
+    end
 
     --hide all
     for _, frame in next, LFG.browseFrames do
@@ -4012,6 +4088,11 @@ function LFG.SetSingleRole(role)
 
     LFG_ROLE = role
 
+end
+
+function LFGsetClassRun(checked)
+    LFG.classRun = checked and true or false
+    lfdebug('classRun = ' .. tostring(LFG.classRun))
 end
 
 function LFGsetRole(role, status, readyCheck)
@@ -5122,6 +5203,46 @@ function LFG.isEliteEncounter(dungeonCode)
     for _, data in next, LFG.eliteEncounters do
         if data.code == dungeonCode then
             return true
+        end
+    end
+    return false
+end
+
+-- Returns true if this dungeon has class-specific set gear and benefits from a class run.
+-- Covers: Baradin Hold, LBRS, UBRS, Scholomance, both Stratholme variants.
+local CLASS_RUN_ELIGIBLE = {
+    bh        = true,
+    lbrs      = true,
+    ubrs      = true,
+    scholo    = true,
+    stratud   = true,
+    stratlive = true,
+}
+function LFG.classRunEligible(dungeonCode)
+    return CLASS_RUN_ELIGIBLE[dungeonCode] == true
+end
+
+-- Returns true if the given class is already slotted in the group for this dungeon.
+function LFG.classConflictsInGroup(dungeonCode, class)
+    local g = LFG.group[dungeonCode]
+    if not g then return false end
+    local slots = { g.tank, g.healer, g.damage1, g.damage2, g.damage3 }
+
+    for _, name in ipairs(slots) do
+        if name and name ~= '' then
+            -- For players already in party, UnitClass works directly
+            local knownClass = LFG.playerClass(name)
+            -- For players slotted but not yet in party, fall back to seenClasses
+            -- (populated from their LFG: broadcast class field, protocol v2+)
+            -- seenClasses entries are now {class=..., cr=...} tables
+            if knownClass == 'priest' and
+               LFG.seenClasses[dungeonCode] and
+               LFG.seenClasses[dungeonCode][name] then
+                knownClass = LFG.seenClasses[dungeonCode][name].class or knownClass
+            end
+            if knownClass == class then
+                return true
+            end
         end
     end
     return false
