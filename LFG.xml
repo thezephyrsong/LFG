@@ -2115,6 +2115,52 @@
                         <DisabledCheckedTexture file="Interface\Buttons\UI-CheckBox-Check-Disabled"/>
                     </CheckButton>
 
+                    <!-- Class Run: opt-in to restrict group to one player per class.
+                         Aligned with the LFGTypeSelect dropdown (x=150).
+                         Only shown for dungeons with class-specific set gear. -->
+                    <CheckButton name="ClassRunCheckButton" hidden="true" toplevel="true">
+                        <Size>
+                            <AbsDimension x="20" y="20"/>
+                        </Size>
+                        <Anchors>
+                            <Anchor point="TOPLEFT">
+                                <Offset>
+                                    <AbsDimension x="150" y="-148"/>
+                                </Offset>
+                            </Anchor>
+                        </Anchors>
+                        <Scripts>
+                            <OnClick>
+                                LFGsetClassRun(this:GetChecked())
+                            </OnClick>
+                            <OnEnter>
+                                GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                                GameTooltip:AddLine("Class Run", 1, 1, 1)
+                                GameTooltip:AddLine("Limit your group to one player per class.", 1, 0.82, 0, true)
+                                GameTooltip:AddLine("Groups take longer to form but each player", 0.7, 0.7, 0.7, true)
+                                GameTooltip:AddLine("gets a fair shot at class set gear.", 0.7, 0.7, 0.7, true)
+                                GameTooltip:Show()
+                            </OnEnter>
+                            <OnLeave>
+                                GameTooltip:Hide()
+                            </OnLeave>
+                        </Scripts>
+                        <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+                        <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+                        <HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+                        <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+                        <DisabledCheckedTexture file="Interface\Buttons\UI-CheckBox-Check-Disabled"/>
+                    </CheckButton>
+                    <FontString name="ClassRunLabel" hidden="true" inherits="GameFontNormal" text="Class Run">
+                        <Anchors>
+                            <Anchor point="LEFT" relativeTo="ClassRunCheckButton" relativePoint="RIGHT">
+                                <Offset>
+                                    <AbsDimension x="2" y="0"/>
+                                </Offset>
+                            </Anchor>
+                        </Anchors>
+                    </FontString>
+
                     <Button name="findGroupButton" hidden="true" inherits="UIPanelButtonTemplate" text="Find Group">
                         <Size>
                             <AbsDimension x="104" y="21"/>
