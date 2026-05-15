@@ -1621,7 +1621,6 @@ local hookChatFrame = function(frame)
     LFGTime:Show()
     lfdebug('Timer seeded at local second: ' .. LFGTime.second)
 end
-end
 
 
 LFG:SetScript("OnEvent", function()
