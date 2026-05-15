@@ -2097,20 +2097,32 @@
                         <Anchors>
                             <Anchor point="TOPLEFT">
                                 <Offset>
-                                    <AbsDimension x="60" y="-125"/>
+                                    <AbsDimension x="30" y="-130"/>
                                 </Offset>
                             </Anchor>
                         </Anchors>
+                        <Layers>
+                            <Layer level="ARTWORK">
+                                <FontString name="$parentText" inherits="GameFontNormal" text="Class Run">
+                                    <Anchors>
+                                        <Anchor point="LEFT" relativePoint="RIGHT">
+                                            <Offset>
+                                                <AbsDimension x="5" y="0"/>
+                                            </Offset>
+                                        </Anchor>
+                                    </Anchors>
+                                </FontString>
+                            </Layer>
+                        </Layers>
                         <Scripts>
                             <OnClick>
                                 LFGsetClassRun(this:GetChecked())
                             </OnClick>
                             <OnEnter>
                                 GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
-                                GameTooltip:AddLine("Class Run", 1, 1, 1)
+                                GameTooltip:AddLine("Class Run - Tier 0 Dungeons", 1, 1, 1)
                                 GameTooltip:AddLine("Limit your group to one player per class.", 1, 0.82, 0, true)
-                                GameTooltip:AddLine("Groups take longer to form but each player", 0.7, 0.7, 0.7, true)
-                                GameTooltip:AddLine("gets a fair shot at class set gear.", 0.7, 0.7, 0.7, true)
+                                GameTooltip:AddLine("Groups take longer to form but each player gets a fair shot at class set gear.", 0.7, 0.7, 0.7, true)
                                 GameTooltip:Show()
                             </OnEnter>
                             <OnLeave>
@@ -2123,16 +2135,7 @@
                         <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
                         <DisabledCheckedTexture file="Interface\Buttons\UI-CheckBox-Check-Disabled"/>
                     </CheckButton>
-                    <FontString name="ClassRunLabel" hidden="true" inherits="GameFontNormal" text="Class Run">
-                        <Anchors>
-                            <Anchor point="LEFT" relativeTo="ClassRunCheckButton" relativePoint="RIGHT">
-                                <Offset>
-                                    <AbsDimension x="2" y="0"/>
-                                </Offset>
-                            </Anchor>
-                        </Anchors>
-                    </FontString>
-
+                   
                     <Button name="findGroupButton" hidden="true" inherits="UIPanelButtonTemplate" text="Find Group">
                         <Size>
                             <AbsDimension x="104" y="21"/>
