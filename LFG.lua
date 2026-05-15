@@ -5464,9 +5464,9 @@ channelMonitorFrame:SetScript("OnEvent", function()
                     end
                     self:SetScript("OnUpdate", nil)
                 end
-            end)
+            end
         end
-    end
+    end)
 
 -- ============================================================
 -- CUSTOM GROUPS SYSTEM v2  (tab 3)
