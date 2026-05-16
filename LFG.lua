@@ -593,305 +593,6 @@ LFGWhoCounter:SetScript("OnUpdate", function()
     end
 end)
 
-LFGDungeonComplete:Hide()
-LFGDungeonComplete.frameIndex = 0
-LFGDungeonComplete.dungeonInProgress = false
-
-LFGDungeonComplete:SetScript("OnShow", function()
-    this.startTime = GetTime()
-    LFGDungeonComplete.frameIndex = 0
-    _G['LFGDungeonComplete']:SetAlpha(0)
-    _G['LFGDungeonComplete']:Show()
-end)
-
-LFGDungeonComplete:SetScript("OnHide", function()
-    --    this.startTime = GetTime()
-end)
-
-LFGDungeonComplete:SetScript("OnUpdate", function()
-    local plus = 0.03 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        this.startTime = GetTime()
-        local frame = ''
-        if LFGDungeonComplete.frameIndex < 10 then
-            frame = frame .. '0' .. LFGDungeonComplete.frameIndex
-        else
-            frame = frame .. LFGDungeonComplete.frameIndex
-        end
-        _G['LFGDungeonCompleteFrame']:SetTexture('Interface\\addons\\LFG\\images\\dungeon_complete\\dungeon_complete_' .. frame)
-        if LFGDungeonComplete.frameIndex < 35 then
-            _G['LFGDungeonComplete']:SetAlpha(_G['LFGDungeonComplete']:GetAlpha() + 0.03)
-        end
-        if LFGDungeonComplete.frameIndex > 119 then
-            _G['LFGDungeonComplete']:SetAlpha(_G['LFGDungeonComplete']:GetAlpha() - 0.03)
-        end
-        if LFGDungeonComplete.frameIndex >= 150 then
-            _G['LFGDungeonComplete']:Hide()
-            _G['LFGDungeonStatus']:Hide()
-            _G['LFGDungeonCompleteFrame']:SetTexture('Interface\\addons\\LFG\\images\\dungeon_complete\\dungeon_complete_00')
-            LFGDungeonComplete:Hide()
-
-            local index = 0
-            if LFG.bosses[LFG.groupFullCode] then
-                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                    index = index + 1
-                    LFG.objectivesFrames[index]:Hide()
-                    LFG.objectivesFrames[index].completed = false
-                    _G["LFGObjective" .. index .. 'ObjectiveComplete']:Hide()
-                    _G["LFGObjective" .. index .. 'ObjectivePending']:Hide()
-                    _G["LFGObjective" .. index .. 'Objective']:SetText('')
-                end
-            end
-            --LFG.objectivesFrames = {}
-        end
-        LFGDungeonComplete.frameIndex = LFGDungeonComplete.frameIndex + 1
-    end
-end)
-
--- objectives
-local LFGObjectives = CreateFrame("Frame")
-LFGObjectives:Hide()
-LFGObjectives:RegisterEvent("CHAT_MSG_COMBAT_HOSTILE_DEATH")
-LFGObjectives.collapsed = false
-LFGObjectives.closedByUser = false
-LFGObjectives.lastObjective = 0
-LFGObjectives.leftOffset = -80
-LFGObjectives.frameIndex = 0
-LFGObjectives.objectivesComplete = 0
-
-function close_lfg_objectives()
-    LFGObjectives.closedByUser = true
-    _G['LFGDungeonStatus']:Hide()
-end
-
--- swoooooooosh
-
-LFGObjectives:SetScript("OnShow", function()
-    LFGObjectives.leftOffset = -80
-    LFGObjectives.frameIndex = 0
-    this.startTime = GetTime()
-end)
-
-LFGObjectives:SetScript("OnHide", function()
-    --    this.startTime = GetTime()
-end)
-
-LFGObjectives:SetScript("OnUpdate", function()
-    local plus = 0.001 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        this.startTime = GetTime()
-        LFGObjectives.frameIndex = LFGObjectives.frameIndex + 1
-        LFGObjectives.leftOffset = LFGObjectives.leftOffset + 5
-        _G["LFGObjective" .. LFGObjectives.lastObjective .. 'Swoosh']:SetPoint("TOPLEFT", _G["LFGObjective" .. LFGObjectives.lastObjective], "TOPLEFT", LFGObjectives.leftOffset, 5)
-        if LFGObjectives.frameIndex <= 10 then
-            _G["LFGObjective" .. LFGObjectives.lastObjective .. 'Swoosh']:SetAlpha(LFGObjectives.frameIndex / 10)
-        end
-        if LFGObjectives.frameIndex >= 30 then
-            _G["LFGObjective" .. LFGObjectives.lastObjective .. 'Swoosh']:SetAlpha(1 - LFGObjectives.frameIndex / 40)
-        end
-        if LFGObjectives.leftOffset >= 120 then
-            LFGObjectives:Hide()
-            _G["LFGObjective" .. LFGObjectives.lastObjective .. 'Swoosh']:SetAlpha(0)
-        end
-    end
-end)
-
-LFGObjectives:SetScript("OnEvent", function()
-    if event then
-        if event == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
-            local creatureDied = arg1
-            lfdebug(creatureDied)
-            if LFG.bosses[LFG.groupFullCode] then
-                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                    --creatureDied == 'You have slain ' .. boss .. '!'
-                    if creatureDied == boss .. ' dies.' then
-                        LFGObjectives.objectiveComplete(boss)
-                        return true
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- fill available dungeons delayer because UnitLevel(member who just joined) returns 0
-local LFGFillAvailableDungeonsDelay = CreateFrame("Frame")
-LFGFillAvailableDungeonsDelay.triggers = 0
-LFGFillAvailableDungeonsDelay.queueAfterIfPossible = false
-LFGFillAvailableDungeonsDelay:Hide()
-LFGFillAvailableDungeonsDelay:SetScript("OnShow", function()
-    this.startTime = GetTime()
-end)
-
-LFGFillAvailableDungeonsDelay:SetScript("OnHide", function()
-    if LFGFillAvailableDungeonsDelay.triggers < 10 then
-        LFG.fillAvailableDungeons(LFGFillAvailableDungeonsDelay.queueAfterIfPossible)
-        LFGFillAvailableDungeonsDelay.triggers = LFGFillAvailableDungeonsDelay.triggers + 1
-    else
-        --lferror('Error occurred at LFGFillAvailableDungeonsDelay triggers = 10. Please report this to Bennylava.')
-    end
-end)
-LFGFillAvailableDungeonsDelay:SetScript("OnUpdate", function()
-    local plus = 0.1 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        LFGFillAvailableDungeonsDelay:Hide()
-    end
-end)
-
--- channel join delayer
-
-local LFGChannelJoinDelay = CreateFrame("Frame")
-LFGChannelJoinDelay:Hide()
-
-LFGChannelJoinDelay:SetScript("OnShow", function()
-    this.startTime = GetTime()
-end)
-
-LFGChannelJoinDelay:SetScript("OnHide", function()
-    LFG.checkLFGChannel()
-end)
-
-LFGChannelJoinDelay:SetScript("OnUpdate", function()
-    local plus = 15 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        LFGChannelJoinDelay:Hide()
-    end
-end)
-
-local LFGQueue = CreateFrame("Frame")
-LFGQueue:Hide()
-
--- group invite timer
-
-local LFGInvite = CreateFrame("Frame")
-LFGInvite:Hide()
-LFGInvite.inviteIndex = 1
-LFGInvite:SetScript("OnShow", function()
-    this.startTime = GetTime()
-    LFGInvite.inviteIndex = 1
-    local awesomeButton = _G['LFGGroupReadyAwesome']
-    awesomeButton:SetText('Waiting Players (' .. LFG.groupSizeMax - GetNumPartyMembers() - 1 .. ')')
-    awesomeButton:Disable()
-end)
-
-LFGInvite:SetScript("OnUpdate", function()
-    local plus = 0.5 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        this.startTime = GetTime()
-
-        LFGInvite.inviteIndex = this.inviteIndex + 1
-
-        if not LFG.group[LFG.groupFullCode] then
-            LFGInvite:Hide()
-            LFGInvite.inviteIndex = 1
-            return
-        end
-
-        if LFGInvite.inviteIndex == 2 then
-            if LFG.group[LFG.groupFullCode].healer ~= '' then
-                InviteUnit(LFG.group[LFG.groupFullCode].healer)
-            end
-        end
-        if LFGInvite.inviteIndex == 3 then
-            if LFG.group[LFG.groupFullCode].damage1 ~= '' then
-                InviteUnit(LFG.group[LFG.groupFullCode].damage1)
-            end
-        end
-        if LFGInvite.inviteIndex == 4 and LFGInvite.inviteIndex <= LFG.groupSizeMax then
-            if LFG.group[LFG.groupFullCode].damage2 ~= '' then
-                InviteUnit(LFG.group[LFG.groupFullCode].damage2)
-            end
-        end
-        if LFGInvite.inviteIndex == 5 and LFGInvite.inviteIndex <= LFG.groupSizeMax then
-            if LFG.group[LFG.groupFullCode].damage3 ~= '' then
-                InviteUnit(LFG.group[LFG.groupFullCode].damage3)
-                LFGInvite:Hide()
-                LFGInvite.inviteIndex = 1
-            end
-        end
-    end
-end)
-
--- role check timer
-
-local LFGRoleCheck = CreateFrame("Frame")
-LFGRoleCheck:Hide()
-
-LFGRoleCheck:SetScript("OnShow", function()
-    this.startTime = GetTime()
-end)
-
-LFGRoleCheck:SetScript("OnHide", function()
-    if LFG.isLeader then
-        if LFG.findingMore then
-        else
-            lfprint('A member of your group has not confirmed his role.')
-            PlaySoundFile("Interface\\Addons\\LFG\\sound\\lfg_denied.ogg")
-            _G['findMoreButton']:Enable()
-        end
-    end
-    _G['LFGRoleCheck']:Hide()
-end)
-
-LFGRoleCheck:SetScript("OnUpdate", function()
-    local plus = LFG.ROLE_CHECK_TIME --seconds
-    if LFG.isLeader then
-        plus = plus + 2 --leader waits 2 more second to hide
-    end
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        LFGRoleCheck:Hide()
-
-        if LFG.isLeader then
-            lfprint('A member of your group does not have the ' .. COLOR_HUNTER .. '[LFG] ' .. COLOR_WHITE ..
-                    'addon. Looking for more is disabled. (Type ' .. COLOR_HUNTER .. '/lfg advertise ' .. COLOR_WHITE .. ' to send them a link)')
-            _G['findMoreButton']:Disable()
-
-        else
-            declineRole()
-        end
-    end
-end)
-
--- who counter timer
-
-local LFGWhoCounter = CreateFrame("Frame")
-LFGWhoCounter:Hide()
-LFGWhoCounter.people = 0
-LFGWhoCounter.listening = false
-LFGWhoCounter:SetScript("OnShow", function()
-    this.startTime = GetTime()
-    LFGWhoCounter.people = 0
-    LFGWhoCounter.listening = true
-    lfprint('Checking people online with the addon (5secs)...')
-end)
-
-LFGWhoCounter:SetScript("OnHide", function()
-    LFGWhoCounter.people = LFGWhoCounter.people + 1 -- + me
-    lfprint('Found ' .. COLOR_GREEN .. LFGWhoCounter.people .. COLOR_WHITE .. ' online using LFG addon.')
-    LFGWhoCounter.listening = false
-end)
-
-LFGWhoCounter:SetScript("OnUpdate", function()
-    local plus = 5 --seconds
-    local gt = GetTime() * 1000
-    local st = (this.startTime + plus) * 1000
-    if gt >= st then
-        LFGWhoCounter:Hide()
-    end
-end)
-
 --closes the group ready frame when someone leaves queue from the button
 local LFGGroupReadyFrameCloser = CreateFrame("Frame")
 LFGGroupReadyFrameCloser:Hide()
@@ -1457,7 +1158,7 @@ LFGComms:SetScript("OnEvent", function()
         if event == 'CHAT_MSG_CHANNEL' and arg8 == LFG.channelIndex and string.find(arg1, 'lfg_group_formed', 1, true) then
             local gfEx = StringSplit(arg1, ':')
             local code = gfEx[3]
-            local time = tonumber(gfEx[4])
+            local queueTime = tonumber(gfEx[4])
             groupsFormedThisSession = groupsFormedThisSession + 1
             if LFG_CONFIG['spamChat'] then
                 lfnotice(LFG.dungeonNameFromCode(code) .. ' group just formed. (type "/lfg spam" to disable this message)')
@@ -1471,13 +1172,13 @@ LFGComms:SetScript("OnEvent", function()
                 end
                 lfprint(groupsFormedThisSession .. ' this session, ' .. totalGroups .. ' total recorded.')
             end
-            if not time then
+            if not queueTime then
                 return false
             end
             if LFG.averageWaitTime == 0 then
-                LFG.averageWaitTime = time
+                LFG.averageWaitTime = queueTime
             else
-                LFG.averageWaitTime = math.floor((LFG.averageWaitTime + time) / 2)
+                LFG.averageWaitTime = math.floor((LFG.averageWaitTime + queueTime) / 2)
             end
             if not LFG_FORMED_GROUPS[code] then
                 LFG_FORMED_GROUPS[code] = 0
@@ -3786,16 +3487,19 @@ end
 
 function LFG.sendCancelMeMessage()
     if string.find(LFG_ROLE, 'tank', 1, true) then
-        SendChatMessage('leftQueue:tank', "CHANNEL",DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
-
+        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
+            'leftQueue:tank', "CHANNEL",
+            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     end
     if string.find(LFG_ROLE, 'healer', 1, true) then
-        SendChatMessage('leftQueue:healer', "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
-
+        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
+            'leftQueue:healer', "CHANNEL",
+            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     end
     if string.find(LFG_ROLE, 'damage', 1, true) then
-        SendChatMessage('leftQueue:damage', "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
-
+        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
+            'leftQueue:damage', "CHANNEL",
+            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     end
 end
 
@@ -3823,7 +3527,9 @@ function LFG.sendLFGMessage(role)
         return
     end
 
-    SendChatMessage(lfg_text, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    ChatThrottleLib:SendChatMessage("BULK", "LFG_lfg",
+        lfg_text, "CHANNEL",
+        DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
 end
 
 function LFG.sendLFMStats(code)
@@ -3854,7 +3560,9 @@ function LFG.sendLFMStats(code)
 
     -- Append :cr so receiving clients know this LFM is from a CR leader
     local crSuffix = LFG.crLeader and ':cr' or ''
-    SendChatMessage("LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    ChatThrottleLib:SendChatMessage("BULK", "LFG_lfm",
+        "LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix,
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     if LFG.crLeader then
         LFG.crLastLFMTime = time()
     end
@@ -3888,7 +3596,9 @@ function LFG.isNeededInLFMGroup(role, name, code)
 end
 
 function LFG.inviteInLFMGroup(name)
-    SendChatMessage("[LFG]:" .. LFG.LFMDungeonCode .. ":(LFM):" .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    ChatThrottleLib:SendChatMessage("NORMAL", "LFG_invite",
+        "[LFG]:" .. LFG.LFMDungeonCode .. ":(LFM):" .. name,
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     InviteUnit(name)
 end
 
@@ -4255,8 +3965,8 @@ function LFG.LFGBrowse_Update()
                     _G["BrowseFrame_" .. data.code .. "InQueue"]:Hide()
 
                     local queues = 0
-                    for dungeon, data in next, LFG.dungeons do
-                        if data.queued then
+                    for _, qdata in next, LFG.dungeons do
+                        if qdata.queued then
                             queues = queues + 1
                         end
                     end
@@ -4476,15 +4186,17 @@ function LFGsetRole(role, status, readyCheck)
     if readyCheck then
         _G['LFGRoleCheckAcceptRole']:Enable()
 
+        -- Apply the new role to the ready-check checkboxes FIRST so the
+        -- button state is evaluated against the updated selection.
+        readyCheckHealer:SetChecked(role == 'healer')
+        readyCheckDamage:SetChecked(role == 'damage')
+        readyCheckTank:SetChecked(role == 'tank')
+
         if not readyCheckTank:GetChecked() and
                 not readyCheckHealer:GetChecked() and
                 not readyCheckDamage:GetChecked() then
             _G['LFGRoleCheckAcceptRole']:Disable()
         end
-
-        readyCheckHealer:SetChecked(role == 'healer')
-        readyCheckDamage:SetChecked(role == 'damage')
-        readyCheckTank:SetChecked(role == 'tank')
 
         LFG_ROLE = role
         return true
@@ -4544,16 +4256,6 @@ function DungeonType_OnClick(self, arg1)
             _G["Dungeon_" .. data.code .. '_CheckButton']:SetChecked(false)
         end
         LFG.dungeons[dungeon].queued = false
-    end
-
-    -- dequeue everything after too
-    for dungeon, data in next, LFG.dungeons do
-        if data.queued then
-            if _G["Dungeon_" .. data.code .. '_CheckButton'] then
-                _G["Dungeon_" .. data.code .. '_CheckButton']:SetChecked(false)
-            end
-            LFG.dungeons[dungeon].queued = false
-        end
     end
 
     if LFG_TYPE == 2 then
@@ -4809,6 +4511,12 @@ function findMore()
 
     LFG.LFMDungeonCode = qDungeon
 
+    -- Guard: if no dungeon is selected there is nothing to role-check for.
+    if qDungeon == '' then
+        lfdebug('findMore: no dungeon selected, aborting roleCheck')
+        return
+    end
+
     local tankCheck = _G['RoleTank']
     local healerCheck = _G['RoleHealer']
     local damageCheck = _G['RoleDamage']
@@ -4889,7 +4597,9 @@ function findGroup()
     end
 
     dungeonsText = string.sub(dungeonsText, 1, string.len(dungeonsText) - 2)
-    lfprint('You are in the queue for |cff69ccf0' .. dungeonsText .. COLOR_WHITE .. ' as: ' .. roleText)
+    if dungeonsText ~= '' then
+        lfprint('You are in the queue for |cff69ccf0' .. dungeonsText .. COLOR_WHITE .. ' as: ' .. roleText)
+    end
 
     LFG.findingGroup = true
     LFGQueue:Show()
@@ -4947,16 +4657,18 @@ function leaveQueue(callData)
 
     dungeonsText = string.sub(dungeonsText, 1, string.len(dungeonsText) - 2)
     if dungeonsText == '' then
-        dungeonsText = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
+        dungeonsText = LFG.dungeonNameFromCode(LFG.LFMDungeonCode) or ''
     end
     if LFG.findingGroup or LFG.findingMore then
         if LFG.inGroup then
             if LFG.isLeader then
                 SendAddonMessage(LFG_ADDON_CHANNEL, "leaveQueue:now", "PARTY")
             end
-            lfprint('Your group has left the queue for |cff69ccf0' .. dungeonsText .. COLOR_WHITE .. '.')
+            if dungeonsText ~= '' then
+                lfprint('Your group has left the queue for |cff69ccf0' .. dungeonsText .. COLOR_WHITE .. '.')
+            end
         else
-            if callData ~= 'from join queue' then
+            if callData ~= 'from join queue' and dungeonsText ~= '' then
                 lfprint('You have left the queue for |cff69ccf0' .. dungeonsText .. COLOR_WHITE .. '.')
             end
         end
