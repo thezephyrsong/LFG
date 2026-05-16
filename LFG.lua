@@ -268,7 +268,7 @@ LFGGoingWithPicker:SetScript("OnUpdate", function()
             LFG.dungeons[dungeonName].myRole = LFGGoingWithPicker.myRole
         end
 
-        SendChatMessage('goingWith:' .. LFGGoingWithPicker.candidate .. ':' .. LFGGoingWithPicker.dungeon .. ':' .. LFGGoingWithPicker.myRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        SendChatMessage('goingWith:' .. LFGGoingWithPicker.candidate .. ':' .. LFGGoingWithPicker.dungeon .. ':' .. LFGGoingWithPicker.myRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
 
         LFG.foundGroup = true
 
@@ -874,7 +874,7 @@ LFGComms:SetScript("OnEvent", function()
                 LFGQueue:Hide()
 
                 if LFG.isLeader then
-                    SendChatMessage("[LFG]:lfg_group_formed:" .. mCode .. ":" .. time() - LFG.queueStartTime, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                    SendChatMessage("[LFG]:lfg_group_formed:" .. mCode .. ":" .. time() - LFG.queueStartTime, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
                 end
             end
             if string.sub(arg2, 1, 10) == 'weInQueue:' then
@@ -1252,7 +1252,7 @@ LFGComms:SetScript("OnEvent", function()
             if string.sub(arg1, 1, 7) == 'whoLFG:' then
                 -- Include protocol version so receivers can detect incompatibility.
                 -- Format: meLFG:<addonVer>:<protocolVer>
-                SendChatMessage('meLFG:' .. addonVer .. ':' .. LFG_PROTOCOL_VERSION, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                SendChatMessage('meLFG:' .. addonVer .. ':' .. LFG_PROTOCOL_VERSION, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             if string.sub(arg1, 1, 6) == 'meLFG:' then
                 lfdebug(arg1)
@@ -1392,14 +1392,14 @@ LFGComms:SetScript("OnEvent", function()
                                     local fdName = LFG.dungeonNameFromCode(mDungeon)
                                     if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
                                     lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
-                                    SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                    SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
                                     LFG.foundGroup = true
                                 end
                             else
                                 local fdName = LFG.dungeonNameFromCode(mDungeon)
                                 if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
                                 lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
-                                SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
                                 LFG.foundGroup = true
                             end
                         end
@@ -1514,7 +1514,7 @@ LFGComms:SetScript("OnEvent", function()
                                             end
                                         end
                                         if foundMessage ~= '' then
-                                            SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                                            SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
                                         end
                                         return false
                                     end
@@ -1574,7 +1574,7 @@ LFGComms:SetScript("OnEvent", function()
                     end
                 end
 
-                SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                SendChatMessage(foundMessage, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
 
             end
         end
@@ -2204,9 +2204,9 @@ LFGQueue:SetScript("OnUpdate", function()
 
                     LFG.SetSingleRole('tank')
 
-                    SendChatMessage("[LFG]:" .. code .. ":party:ready:" .. healer .. ":" .. damage1 .. ":" .. damage2 .. ":" .. damage3, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                    SendChatMessage("[LFG]:" .. code .. ":party:ready:" .. healer .. ":" .. damage1 .. ":" .. damage2 .. ":" .. damage3, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
 
-                    SendChatMessage("[LFG]:lfg_group_formed:" .. code .. ":" .. time() - LFG.queueStartTime, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                    SendChatMessage("[LFG]:lfg_group_formed:" .. code .. ":" .. time() - LFG.queueStartTime, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
 
                     --untick everything
                     for dungeon, data in next, LFG.dungeons do
@@ -2915,31 +2915,31 @@ function LFG.addTank(dungeon, name, faux, add)
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -2951,7 +2951,7 @@ function LFG.addTank(dungeon, name, faux, add)
                 LFG.group[dungeon].tank = name
             end
             if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -2983,31 +2983,31 @@ function LFG.addHealer(dungeon, name, faux, add)
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3019,7 +3019,7 @@ function LFG.addHealer(dungeon, name, faux, add)
                 LFG.group[dungeon].healer = name
             end
             if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3083,31 +3083,31 @@ function LFG.addDamage(dungeon, name, faux, add)
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3117,19 +3117,19 @@ function LFG.addDamage(dungeon, name, faux, add)
         if LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
             if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3489,17 +3489,17 @@ function LFG.sendCancelMeMessage()
     if string.find(LFG_ROLE, 'tank', 1, true) then
         ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
             'leftQueue:tank', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+            DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
     end
     if string.find(LFG_ROLE, 'healer', 1, true) then
         ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
             'leftQueue:healer', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+            DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
     end
     if string.find(LFG_ROLE, 'damage', 1, true) then
         ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
             'leftQueue:damage', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+            DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
     end
 end
 
@@ -3529,7 +3529,7 @@ function LFG.sendLFGMessage(role)
 
     ChatThrottleLib:SendChatMessage("BULK", "LFG_lfg",
         lfg_text, "CHANNEL",
-        DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
 end
 
 function LFG.sendLFMStats(code)
@@ -3562,7 +3562,7 @@ function LFG.sendLFMStats(code)
     local crSuffix = LFG.crLeader and ':cr' or ''
     ChatThrottleLib:SendChatMessage("BULK", "LFG_lfm",
         "LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix,
-        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
     if LFG.crLeader then
         LFG.crLastLFMTime = time()
     end
@@ -3598,7 +3598,7 @@ end
 function LFG.inviteInLFMGroup(name)
     ChatThrottleLib:SendChatMessage("NORMAL", "LFG_invite",
         "[LFG]:" .. LFG.LFMDungeonCode .. ":(LFM):" .. name,
-        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
     InviteUnit(name)
 end
 
@@ -4801,7 +4801,7 @@ SlashCmdList["LFG"] = function(cmd)
                 return false
             end
             LFGWhoCounter:Show()
-            SendChatMessage('whoLFG:' .. addonVer, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+            SendChatMessage('whoLFG:' .. addonVer, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
         end
         if string.sub(cmd, 1, 17) == 'resetformedgroups' then
             LFG.resetFormedGroups()
