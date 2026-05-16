@@ -3487,19 +3487,16 @@ end
 
 function LFG.sendCancelMeMessage()
     if string.find(LFG_ROLE, 'tank', 1, true) then
-        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
-            'leftQueue:tank', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        SendChatMessage('leftQueue:tank', "CHANNEL",DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+
     end
     if string.find(LFG_ROLE, 'healer', 1, true) then
-        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
-            'leftQueue:healer', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        SendChatMessage('leftQueue:healer', "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+
     end
     if string.find(LFG_ROLE, 'damage', 1, true) then
-        ChatThrottleLib:SendChatMessage("NORMAL", "LFG_cancel",
-            'leftQueue:damage', "CHANNEL",
-            DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+        SendChatMessage('leftQueue:damage', "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+
     end
 end
 
@@ -3527,9 +3524,7 @@ function LFG.sendLFGMessage(role)
         return
     end
 
-    ChatThrottleLib:SendChatMessage("BULK", "LFG_lfg",
-        lfg_text, "CHANNEL",
-        DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    SendChatMessage(lfg_text, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
 end
 
 function LFG.sendLFMStats(code)
@@ -3560,9 +3555,7 @@ function LFG.sendLFMStats(code)
 
     -- Append :cr so receiving clients know this LFM is from a CR leader
     local crSuffix = LFG.crLeader and ':cr' or ''
-    ChatThrottleLib:SendChatMessage("BULK", "LFG_lfm",
-        "LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix,
-        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    SendChatMessage("LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     if LFG.crLeader then
         LFG.crLastLFMTime = time()
     end
@@ -3596,9 +3589,7 @@ function LFG.isNeededInLFMGroup(role, name, code)
 end
 
 function LFG.inviteInLFMGroup(name)
-    ChatThrottleLib:SendChatMessage("NORMAL", "LFG_invite",
-        "[LFG]:" .. LFG.LFMDungeonCode .. ":(LFM):" .. name,
-        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
+    SendChatMessage("[LFG]:" .. LFG.LFMDungeonCode .. ":(LFM):" .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, GetChannelName(LFG.channel))
     InviteUnit(name)
 end
 
