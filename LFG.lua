@@ -585,7 +585,14 @@ LFGWhoCounter:SetScript("OnHide", function()
 end)
 
 LFGWhoCounter:SetScript("OnUpdate", function()
-    loca)
+    local plus = 5 --seconds
+    local gt = GetTime() * 1000
+    local st = (this.startTime + plus) * 1000
+    if gt >= st then
+        LFGWhoCounter:Hide()
+    end
+end)
+
 LFGDungeonComplete:Hide()
 LFGDungeonComplete.frameIndex = 0
 LFGDungeonComplete.dungeonInProgress = false
