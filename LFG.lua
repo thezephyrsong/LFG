@@ -172,7 +172,7 @@ LFGTime:SetScript("OnShow", function()
 end)
 
 LFGTime:SetScript("OnUpdate", function()
-    local plus = 0.5 --seconds
+    local plus = 1.0 --seconds (per-second resolution is all we need; was 0.5)
     local gt = GetTime() * 1000
     local st = (this.startTime + plus) * 1000
     if gt >= st then
@@ -206,6 +206,8 @@ LFGTime:SetScript("OnUpdate", function()
                 for dungeon, data in next, LFG.dungeons do
                     --reset dungeon spam
                     LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
+                    -- reset display counts to match browseNames wipe
+                    LFG.dungeonsSpamDisplay[data.code] = { tank = 0, healer = 0, damage = 0 }
                     --reset myRole
                     if LFG.groupFullCode == '' and not LFG.inGroup then
                         LFG.dungeons[dungeon].myRole = ''
@@ -1313,14 +1315,19 @@ LFGComms:SetScript("OnEvent", function()
                             LFG.browseNames[mDungeonCode][mRole] = ''
                         end
 
-                        if LFG.browseNames[mDungeonCode][mRole] == '' then
-                            LFG.browseNames[mDungeonCode][mRole] = arg2
-                        else
-                            LFG.browseNames[mDungeonCode][mRole] = LFG.browseNames[mDungeonCode][mRole] .. "\n" .. arg2
-                        end
+                        -- Only add name and increment counter if not already seen this cycle
+                        local alreadySeen = LFG.browseNames[mDungeonCode][mRole] ~= '' and
+                            string.find('\n' .. LFG.browseNames[mDungeonCode][mRole] .. '\n', '\n' .. arg2 .. '\n', 1, true)
 
-                        LFG.incDungeonssSpamRole(mDungeonCode, mRole)
-                        LFG.updateDungeonsSpamDisplay(mDungeonCode)
+                        if not alreadySeen then
+                            if LFG.browseNames[mDungeonCode][mRole] == '' then
+                                LFG.browseNames[mDungeonCode][mRole] = arg2
+                            else
+                                LFG.browseNames[mDungeonCode][mRole] = LFG.browseNames[mDungeonCode][mRole] .. "\n" .. arg2
+                            end
+                            LFG.incDungeonssSpamRole(mDungeonCode, mRole)
+                            LFG.updateDungeonsSpamDisplay(mDungeonCode)
+                        end
                     end
                 end
             end
@@ -2561,7 +2568,6 @@ function LFG.getAvailableDungeons(level, type, mine, partyIndex)
 end
 
 function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
-
     if LFG_TYPE == 2 then
         -- Elite Encounters
         LFG.dungeons = LFG.eliteEncounters
@@ -4106,10 +4112,8 @@ function LFG_Toggle()
 
             LFG.checkLFGChannel()
             if not LFG.findingGroup then
-                LFG.fillAvailableDungeons()
+                DungeonListFrame_Update()
             end
-
-            DungeonListFrame_Update()
 
         elseif LFG.tab == 2 then
             BrowseDungeonListFrame_Update()
@@ -4177,14 +4181,26 @@ end
 
 -- Per-dungeon class run setter, called by each dungeon row's CR checkbox.
 function LFGsetClassRunForDungeon(code, checked)
+    if LFG.findingGroup or LFG.findingMore then return end
     LFG.classRunPerDungeon[code] = checked and true or false
     lfdebug('classRunPerDungeon[' .. tostring(code) .. '] = ' .. tostring(checked))
-    -- Auto-enable the queue checkbox when CR is turned on
+    -- Auto-enable the queue checkbox when CR is turned on, respecting the queue limit
     if checked then
         local queueBtn = _G['Dungeon_' .. code .. '_CheckButton']
         if queueBtn and not queueBtn:GetChecked() then
-            queueBtn:SetChecked(true)
-            queueFor('Dungeon_' .. code .. '_CheckButton', true)
+            local queues = 0
+            for _, data in next, LFG.dungeons do
+                if data.queued then queues = queues + 1 end
+            end
+            if queues < LFG.maxDungeonsInQueue then
+                queueBtn:SetChecked(true)
+                queueFor('Dungeon_' .. code .. '_CheckButton', true)
+            else
+                -- Limit reached: uncheck the CR box since we can't queue this dungeon
+                LFG.classRunPerDungeon[code] = false
+                local crBtn = _G['Dungeon_' .. code .. 'ClassRunBtn']
+                if crBtn then crBtn:SetChecked(false) end
+            end
         end
     end
 end
@@ -4251,10 +4267,12 @@ function LFGsetRole(role, status, readyCheck)
 end
 
 function DungeonListFrame_Update(dont_scroll)
+    if not _G['LFGMain'] or not _G['LFGMain']:IsVisible() then return end
     LFG.fillAvailableDungeons(false, dont_scroll)
 end
 
 function BrowseDungeonListFrame_Update()
+    if not _G['LFGBrowse'] or not _G['LFGBrowse']:IsVisible() then return end
     LFG.LFGBrowse_Update()
 end
 
