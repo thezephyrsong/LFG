@@ -17,12 +17,12 @@
             <Layer level="OVERLAY">
                 <FontString name="$parentText" inherits="GameFontNormal" text="dungeontext" justifyH="LEFT">
                     <Size>
-                        <AbsDimension x="200" y="20"/>
+                        <AbsDimension x="185" y="20"/>
                     </Size>
                     <Anchors>
                         <Anchor point="LEFT">
                             <Offset>
-                                <AbsDimension x="20" y="0"/>
+                                <AbsDimension x="38" y="0"/>
                             </Offset>
                         </Anchor>
                     </Anchors>
@@ -60,6 +60,42 @@
                     <OnClick>
                         queueFor(this:GetName(), this:GetChecked())
                     </OnClick>
+                </Scripts>
+                <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
+                <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
+                <HighlightTexture file="Interface\Buttons\UI-CheckBox-Highlight" alphaMode="ADD"/>
+                <CheckedTexture file="Interface\Buttons\UI-CheckBox-Check"/>
+                <DisabledCheckedTexture file="Interface\Buttons\UI-CheckBox-Check-Disabled"/>
+            </CheckButton>
+
+            <!-- Per-dungeon Class Run checkbox. Only shown for CR-eligible dungeons.
+                 Sits immediately to the right of the queue checkbox.
+                 Calls LFGsetClassRunForDungeon with the parent frame's .code field. -->
+            <CheckButton name="$parentClassRunBtn" hidden="true" toplevel="true">
+                <Size>
+                    <AbsDimension x="16" y="16"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="LEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="0"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Scripts>
+                    <OnClick>
+                        LFGsetClassRunForDungeon(this:GetParent().code, this:GetChecked())
+                    </OnClick>
+                    <OnEnter>
+                        GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine("Class Run", 1, 1, 1)
+                        GameTooltip:AddLine("Limit this dungeon's group to one player per class.", 1, 0.82, 0, true)
+                        GameTooltip:AddLine("Groups take longer to form but each player gets a fair shot at class set gear.", 0.7, 0.7, 0.7, true)
+                        GameTooltip:Show()
+                    </OnEnter>
+                    <OnLeave>
+                        GameTooltip:Hide()
+                    </OnLeave>
                 </Scripts>
                 <NormalTexture file="Interface\Buttons\UI-CheckBox-Up"/>
                 <PushedTexture file="Interface\Buttons\UI-CheckBox-Down"/>
@@ -2116,6 +2152,7 @@
                         </Layers>
                         <Scripts>
                             <OnClick>
+                                -- Replaced by per-row CR checkboxes; kept for legacy compatibility.
                                 LFGsetClassRun(this:GetChecked())
                             </OnClick>
                             <OnEnter>

@@ -70,7 +70,12 @@ LFG.ROLE_CHECK_TIME = 50
 LFG.foundGroup = false
 LFG.inGroup = false
 LFG.isLeader = false
-LFG.classRun = false          -- opt-in: only match one player per class
+LFG.classRunPerDungeon = {}   -- [dungeonCode] = true/false, opt-in per dungeon
+
+-- Helper: returns true if class run is enabled for the given dungeon code.
+function LFG.isClassRun(dungeonCode)
+    return LFG.classRunPerDungeon[dungeonCode] == true
+end
 LFG.seenClasses = {}          -- [dungeonCode][playerName] = {class, cr}, populated from LFG: broadcasts
 LFG.crLeader = false          -- true when this client self-elected as CR leader (distinct from IsPartyLeader)
 LFG.crCandidates = {}         -- [dungeonCode][playerName] = time(), CR seekers seen this cycle
@@ -1353,7 +1358,7 @@ LFGComms:SetScript("OnEvent", function()
 
                     -- If we're a CR seeker and see a CR LFM, reset our election clock
                     -- so we don't self-elect while a valid leader is active.
-                    if lfmCR and LFG.classRun and LFG.classRunEligible(mDungeonCode) then
+                    if lfmCR and LFG.isClassRun(mDungeonCode) and LFG.classRunEligible(mDungeonCode) then
                         LFG.crElectionTime[mDungeonCode] = nil
                     end
                 end
@@ -1383,7 +1388,7 @@ LFGComms:SetScript("OnEvent", function()
                             -- reject found: messages from leaders who didn't broadcast :cr.
                             -- This prevents v1 leaders or non-CR v2 leaders from silently
                             -- pulling us into a regular group and bypassing class checks.
-                            if LFG.classRun and LFG.classRunEligible(mDungeon) then
+                            if LFG.isClassRun(mDungeon) and LFG.classRunEligible(mDungeon) then
                                 local senderIsCR = LFG.crCandidates[mDungeon] and
                                                    LFG.crCandidates[mDungeon][arg2] ~= nil
                                 if not senderIsCR then
@@ -1495,7 +1500,7 @@ LFGComms:SetScript("OnEvent", function()
                                 if LFG.isLeader or LFG.crLeader then
                                     -- Class run leaders only slot applicants who also flagged cr.
                                     -- Regular leaders ignore the cr flag entirely.
-                                    if LFG.classRun and LFG.classRunEligible(mDungeonCode) and not mClassRun then
+                                    if LFG.isClassRun(mDungeonCode) and LFG.classRunEligible(mDungeonCode) and not mClassRun then
                                         lfdebug('classRun: skipping ' .. arg2 .. ' - no cr flag')
                                     else
                                         if mRole == 'tank' then
@@ -2023,7 +2028,7 @@ function LFG.init()
     LFG.group = {}
     LFG.oneGroupFull = false
     LFG.groupFullCode = ''
-    LFG.classRun = _G['ClassRunCheckButton'] and _G['ClassRunCheckButton']:GetChecked() or false
+    -- classRunPerDungeon is maintained directly by per-row checkboxes; no global read needed.
     LFG.seenClasses = {}
     LFG.crLeader = false
     LFG.crCandidates = {}
@@ -2686,6 +2691,17 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             LFG.dungeons[dungeon].queued = data.queued
             _G['Dungeon_' .. data.code .. '_CheckButton']:SetChecked(data.queued)
 
+            -- Per-dungeon Class Run checkbox
+            local crBtn = _G['Dungeon_' .. data.code .. 'ClassRunBtn']
+            if crBtn then
+                if LFG.classRunEligible(data.code) then
+                    crBtn:Show()
+                    crBtn:SetChecked(data.queued and LFG.classRunPerDungeon[data.code] == true)
+                else
+                    crBtn:Hide()
+                end
+            end
+
         end
 
         if LFG.level >= data.minLevel and LFG_TYPE == 3 then
@@ -2742,12 +2758,18 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             if _G['Dungeon_' .. data.code .. '_CheckButton'] then
                 _G['Dungeon_' .. data.code .. '_CheckButton']:Disable()
             end
+            if _G['Dungeon_' .. data.code .. 'ClassRunBtn'] then
+                _G['Dungeon_' .. data.code .. 'ClassRunBtn']:Disable()
+            end
         end
 
         if LFG.findingMore then
             if _G['Dungeon_' .. data.code .. '_CheckButton'] then
                 _G['Dungeon_' .. data.code .. '_CheckButton']:Disable()
                 _G['Dungeon_' .. data.code .. '_CheckButton']:SetChecked(false)
+            end
+            if _G['Dungeon_' .. data.code .. 'ClassRunBtn'] then
+                _G['Dungeon_' .. data.code .. 'ClassRunBtn']:Disable()
             end
             if data.code == LFG.LFMDungeonCode then
                 if _G['Dungeon_' .. data.code .. '_CheckButton'] then
@@ -2902,7 +2924,7 @@ function LFG.addTank(dungeon, name, faux, add)
     end
 
     -- Class run: reject if another player of the same class is already slotted
-    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+    if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
             lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
@@ -2970,7 +2992,7 @@ function LFG.addHealer(dungeon, name, faux, add)
     end
 
     -- Class run: reject if another player of the same class is already slotted
-    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+    if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
             lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
@@ -3070,7 +3092,7 @@ function LFG.addDamage(dungeon, name, faux, add)
     end
 
     -- Class run: reject if another player of the same class is already slotted
-    if LFG.classRun and not faux and LFG.classRunEligible(dungeon) then
+    if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
             lfdebug('classRun: rejecting ' .. name .. ' (' .. class .. ') - class already in group for ' .. dungeon)
@@ -3506,9 +3528,9 @@ end
 function LFG.sendLFGMessage(role)
 
     local myClass = LFG.class ~= '' and LFG.class or LFG.playerClass(me)
-    local crFlag = LFG.classRun and ':cr' or ''
     local lfg_text = ''
     for code, _ in pairs(LFG.group) do
+        local crFlag = LFG.isClassRun(code) and ':cr' or ''
         if LFG.supress[code] == role then
             LFG.supress[code] = ''
         else
@@ -3839,21 +3861,7 @@ LFG.browseNames = {}
 function LFG.LFGBrowse_Update()
     lfdebug('LFGBrowse_Update time is ' .. LFGTime.second)
 
-    -- Show the Class Run checkbox if any eligible dungeon is currently visible
-    -- in the browse list (i.e. within level range), regardless of queue state.
-    local showClassRun = false
-    for _, data in next, LFG.dungeons do
-        if LFG.classRunEligible(data.code) and LFG.level >= data.minLevel then
-            showClassRun = true
-            break
-        end
-    end
-    if _G['ClassRunCheckButton'] then
-        if showClassRun then _G['ClassRunCheckButton']:Show() else _G['ClassRunCheckButton']:Hide() end
-    end
-    if _G['ClassRunLabel'] then
-        if showClassRun then _G['ClassRunLabel']:Show() else _G['ClassRunLabel']:Hide() end
-    end
+    -- ClassRunCheckButton is replaced by per-row CR checkboxes; nothing to show/hide globally.
 
     --hide all
     for _, frame in next, LFG.browseFrames do
@@ -4167,9 +4175,23 @@ function LFG.SetSingleRole(role)
 
 end
 
+-- Per-dungeon class run setter, called by each dungeon row's CR checkbox.
+function LFGsetClassRunForDungeon(code, checked)
+    LFG.classRunPerDungeon[code] = checked and true or false
+    lfdebug('classRunPerDungeon[' .. tostring(code) .. '] = ' .. tostring(checked))
+    -- Auto-enable the queue checkbox when CR is turned on
+    if checked then
+        local queueBtn = _G['Dungeon_' .. code .. '_CheckButton']
+        if queueBtn and not queueBtn:GetChecked() then
+            queueBtn:SetChecked(true)
+            queueFor('Dungeon_' .. code .. '_CheckButton', true)
+        end
+    end
+end
+
+-- Legacy stub kept for safety; the old global ClassRunCheckButton is now hidden.
 function LFGsetClassRun(checked)
-    LFG.classRun = checked and true or false
-    lfdebug('classRun = ' .. tostring(LFG.classRun))
+    lfdebug('LFGsetClassRun (legacy) called - ignored')
 end
 
 function LFGsetRole(role, status, readyCheck)
@@ -4783,6 +4805,10 @@ end
 SLASH_LFG1 = "/lfgaddon"
 SLASH_LFG2 = "/lfg"
 SlashCmdList["LFG"] = function(cmd)
+    if not cmd or cmd == '' then
+        LFG_Toggle()
+        return
+    end
     if cmd then
         if string.sub(cmd, 1, 4) == 'spam' then
             LFG_CONFIG['spamChat'] = not LFG_CONFIG['spamChat']
@@ -5320,7 +5346,7 @@ function LFG.crElectLeader(dungeonCode)
     for _, n in ipairs(candidates) do
         if n == me then selfIncluded = true break end
     end
-    if not selfIncluded and LFG.classRun then
+    if not selfIncluded and LFG.isClassRun(dungeonCode) then
         table.insert(candidates, me)
     end
     if #candidates == 0 then return nil end
@@ -5371,7 +5397,14 @@ end
 -- Run on the spam timer. Checks whether election conditions are met for each
 -- queued CR dungeon and self-elects if appropriate.
 function LFG.crCheckElection()
-    if not LFG.classRun or LFG.inGroup or LFG.isLeader then return end
+    local anyClassRun = false
+    for _, data in next, LFG.dungeons do
+        if data.queued and LFG.isClassRun(data.code) then
+            anyClassRun = true
+            break
+        end
+    end
+    if not anyClassRun or LFG.inGroup or LFG.isLeader then return end
 
     for _, data in next, LFG.dungeons do
         if data.queued and LFG.classRunEligible(data.code) then
