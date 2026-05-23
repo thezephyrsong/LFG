@@ -299,11 +299,15 @@ function ChatThrottleLib:Despool(Prio)
 			Prio.Ring.pos = Prio.Ring.pos.next
 		end
 		local didSend=false
+		local callbackFn = msg.callbackFn
+		local callbackArg = msg.callbackArg
 		local lowerDest = strlower(msg[3] or "")
 		if lowerDest == "raid" and not UnitInRaid("player") then
 			-- do nothing
+			DelMsg(msg)
 		elseif lowerDest == "party" and GetNumPartyMembers() == 0 then
 			-- do nothing
+			DelMsg(msg)
 		else
 			Prio.avail = Prio.avail - msg.nSize
 			bMyTraffic = true
@@ -314,8 +318,8 @@ function ChatThrottleLib:Despool(Prio)
 			didSend = true
 		end
 		-- notify caller of delivery (even if we didn't send it)
-		if msg.callbackFn then
-			msg.callbackFn (msg.callbackArg, didSend)
+		if callbackFn then
+			callbackFn(callbackArg, didSend)
 		end
 		-- USER CALLBACK MAY ERROR
 	end
@@ -513,5 +517,4 @@ if(WOWB_VER) then
 	ChatThrottleLib.Frame:RegisterEvent("CHAT_MSG_SAY")
 end
 ]]
-
 
