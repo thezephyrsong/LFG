@@ -1,8 +1,6 @@
 BINDING_HEADER_LFG = "Looking For Group"
 BINDING_NAME_LFG = "Toggle Looking For Group"
 
-local _G, _ = _G or getfenv()
-
 local LFG = CreateFrame("Frame")
 local me = UnitName('player')
 local addonVer = GetAddOnMetadata("LFG", "Version")
@@ -261,9 +259,6 @@ LFGGoingWithPicker:SetScript("OnShow", function()
     this.startTime = GetTime()
 end)
 
-LFGGoingWithPicker:SetScript("OnHide", function()
-end)
-
 LFGGoingWithPicker:SetScript("OnUpdate", function()
     local plus = 1 --seconds
     local gt = GetTime() * 1000
@@ -310,10 +305,6 @@ LFGDungeonComplete:SetScript("OnShow", function()
     LFGDungeonComplete.frameIndex = 0
     _G['LFGDungeonComplete']:SetAlpha(0)
     _G['LFGDungeonComplete']:Show()
-end)
-
-LFGDungeonComplete:SetScript("OnHide", function()
-    --    this.startTime = GetTime()
 end)
 
 LFGDungeonComplete:SetScript("OnUpdate", function()
@@ -382,10 +373,6 @@ LFGObjectives:SetScript("OnShow", function()
     this.startTime = GetTime()
 end)
 
-LFGObjectives:SetScript("OnHide", function()
-    --    this.startTime = GetTime()
-end)
-
 LFGObjectives:SetScript("OnUpdate", function()
     local plus = 0.001 --seconds
     local gt = GetTime() * 1000
@@ -418,7 +405,7 @@ LFGObjectives:SetScript("OnEvent", function()
                     --creatureDied == 'You have slain ' .. boss .. '!'
                     if creatureDied == boss .. ' dies.' then
                         LFGObjectives.objectiveComplete(boss)
-                        return true
+                        return
                     end
                 end
             end
@@ -541,8 +528,7 @@ end)
 
 LFGRoleCheck:SetScript("OnHide", function()
     if LFG.isLeader then
-        if LFG.findingMore then
-        else
+        if not LFG.findingMore then
             lfprint('A member of your group has not confirmed his role.')
             PlaySoundFile("Interface\\Addons\\LFG\\sound\\lfg_denied.ogg")
             _G['findMoreButton']:Enable()
@@ -647,9 +633,7 @@ LFGComms:RegisterEvent("CHAT_MSG_WHISPER")
 LFGComms:RegisterEvent("CHAT_MSG_CHANNEL_LEAVE")
 LFGComms:RegisterEvent("PARTY_INVITE_REQUEST")
 LFGComms:RegisterEvent("CHAT_MSG_ADDON")
-LFGComms:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 LFGComms:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE_USER")
-LFGComms:RegisterEvent("CHAT_MSG_SYSTEM")
 --"CHAT_MSG_CHANNEL_NOTICE_USER"
 --Category: Communication
 --
@@ -1574,7 +1558,7 @@ LFGComms:SetScript("OnEvent", function()
                                             LFG.addTank(mDungeonCode, arg2, true, true) --faux, tank
                                         end
                                         if mRole == 'healer' and LFG.group[mDungeonCode].healer == '' then
-                                            LFG.addHealer(mDungeonCode, arg2, true, true) -- fause healer
+                                            LFG.addHealer(mDungeonCode, arg2, true, true) -- faux healer
                                         end
                                         if mRole == 'damage' then
                                             LFG.addDamage(mDungeonCode, arg2, true, true) --faux, dps
@@ -1693,7 +1677,7 @@ LFG:SetScript("OnEvent", function()
             if not LFG.inGroup then
                 LFG.currentGroupSize = 1
             end
-            lfdebug('joineed' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
+            lfdebug('joined' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
             lfdebug('left' .. GetNumPartyMembers() + 1 .. ' < ' .. LFG.currentGroupSize)
 
             local someoneJoined = GetNumPartyMembers() + 1 > LFG.currentGroupSize
@@ -1906,12 +1890,12 @@ LFG:SetScript("OnEvent", function()
                         if not stillInParty then
                             LFG.group[LFG.LFMDungeonCode].damage3 = ''
                             LFG.LFMGroup.damage3 = ''
-                            lfprint(leftName .. ' (' .. COLOR_DAMAGE .. 'Damage' .. COLOR_WHITE .. ') has been remove from the queue group.')
+                            lfprint(leftName .. ' (' .. COLOR_DAMAGE .. 'Damage' .. COLOR_WHITE .. ') has been removed from the queue group.')
                         end
                     end
                 end
             end
-            lfdebug('ajunge aici ??')
+            lfdebug('running post-member-change logic')
             if LFG.isLeader then
                 LFG.sendMinimapDataToParty(LFG.LFMDungeonCode)
             end
@@ -2040,6 +2024,8 @@ function LFG.init()
     LFG.crLeader = false
     LFG.crCandidates = {}
     LFG.crElectionTime = {}
+    LFG.browseNames = {}
+    LFG.warnedProtocolMismatch = false
     LFG.acceptNextInvite = false
     LFG.currentGroupSize = GetNumPartyMembers() + 1
 
@@ -2068,23 +2054,23 @@ function LFG.init()
         _G['LFGBrowseButtonHighlight']:Hide()
     end)
 
-    local dungeonsButton = _G['LFGDungeonsButton']
+    local dungeonsButton2 = _G['LFGDungeonsButton']
 
-    dungeonsButton:SetScript("OnEnter", function()
+    dungeonsButton2:SetScript("OnEnter", function()
         _G['LFGDungeonsButtonHighlight']:Show()
     end)
-    dungeonsButton:SetScript("OnLeave", function()
+    dungeonsButton2:SetScript("OnLeave", function()
         _G['LFGDungeonsButtonHighlight']:Hide()
     end)
 
     if LFG.shouldHideButtonTextures() then
-	    LFG.hideButtonTextures("RoleCheckRoleDamageTooltipButton")
-	    LFG.hideButtonTextures("RoleCheckRoleTankTooltipButton")
-	    LFG.hideButtonTextures("RoleCheckRoleHealerTooltipButton")
-	    LFG.hideButtonTextures("RoleTankTooltipButton")
-	    LFG.hideButtonTextures("RoleHealerTooltipButton")
-	    LFG.hideButtonTextures("RoleDamageTooltipButton")
-	end
+        LFG.hideButtonTextures("RoleCheckRoleDamageTooltipButton")
+        LFG.hideButtonTextures("RoleCheckRoleTankTooltipButton")
+        LFG.hideButtonTextures("RoleCheckRoleHealerTooltipButton")
+        LFG.hideButtonTextures("RoleTankTooltipButton")
+        LFG.hideButtonTextures("RoleHealerTooltipButton")
+        LFG.hideButtonTextures("RoleDamageTooltipButton")
+    end
 
     for dungeon, data in next, LFG.dungeons do
         if not LFG.dungeonsSpam[data.code] then
@@ -2649,9 +2635,9 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             end
 
             if LFG.shouldHideButtonTextures() then
-	            -- Hide button textures for the newly created dungeon item
-			    LFG.hideButtonTextures("Dungeon_" .. data.code .. "_Button")
-			end
+                -- Hide button textures for the newly created dungeon item
+                LFG.hideButtonTextures("Dungeon_" .. data.code .. "_Button")
+            end
 
             LFG.availableDungeons[data.code]:Show()
 
@@ -2847,15 +2833,15 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
     _G['DungeonListScrollFrame']:UpdateScrollChildRect()
 
     if LFG.shouldHideButtonTextures() then
-	    for code, frame in next, LFG.availableDungeons do
-	        if frame then
-	            LFG.hideButtonTextures("Dungeon_" .. code .. "_Button")
-	        end
-	    end
+        for code, frame in next, LFG.availableDungeons do
+            if frame then
+                LFG.hideButtonTextures("Dungeon_" .. code .. "_Button")
+            end
+        end
 
-	    LFG.hideButtonTextures("LFGBrowseButton")
-	    LFG.hideButtonTextures("LFGDungeonsButton")
-	end
+        LFG.hideButtonTextures("LFGBrowseButton")
+        LFG.hideButtonTextures("LFGDungeonsButton")
+    end
 end
 
 function LFG.enableDungeonCheckButtons()
@@ -4329,7 +4315,7 @@ function DungeonType_OnClick(self, arg1)
 
     -- ADD THIS LINE - Hide button textures for newly created dungeon buttons
     if LFG.shouldHideButtonTextures() then
-    	LFG.hideAllAddonButtonTextures()
+        LFG.hideAllAddonButtonTextures()
     end
 end
 
@@ -4481,9 +4467,6 @@ function queueFor(name, status)
     local dung = StringSplit(name, '_')
     dungeonCode = dung[2]
     for dungeon, data in next, LFG.dungeons do
-        if tonumber(dungeonCode) then
-            dungeonCode = tonumber(dungeonCode)
-        end
         if dungeonCode == data.code then
             if status then
                 LFG.dungeons[dungeon].queued = true
@@ -4697,7 +4680,7 @@ function leaveQueue(callData)
 
     dungeonsText = string.sub(dungeonsText, 1, string.len(dungeonsText) - 2)
     if dungeonsText == '' then
-        dungeonsText = LFG.dungeonNameFromCode(LFG.LFMDungeonCode) or ''
+        dungeonsText = LFG.dungeonNameFromCode(LFG.LFMDungeonCode)
     end
     if LFG.findingGroup or LFG.findingMore then
         if LFG.inGroup then
@@ -5467,17 +5450,28 @@ function LFG.classConflictsInGroup(dungeonCode, class)
 
     for _, name in ipairs(slots) do
         if name and name ~= '' then
-            -- For players already in party, UnitClass works directly
-            local knownClass = LFG.playerClass(name)
-            -- For players slotted but not yet in party, fall back to seenClasses
-            -- (populated from their LFG: broadcast class field, protocol v2+)
-            -- seenClasses entries are now {class=..., cr=...} tables
-            if knownClass == 'priest' and
-               LFG.seenClasses[dungeonCode] and
-               LFG.seenClasses[dungeonCode][name] then
-                knownClass = LFG.seenClasses[dungeonCode][name].class or knownClass
+            -- Check if this player is actually reachable via UnitClass.
+            local knownClass = nil
+            if name == me then
+                local _, unitClass = UnitClass('player')
+                knownClass = string.lower(unitClass)
+            else
+                for i = 1, GetNumPartyMembers() do
+                    if UnitName('party' .. i) == name then
+                        local _, unitClass = UnitClass('party' .. i)
+                        knownClass = string.lower(unitClass)
+                        break
+                    end
+                end
             end
-            if knownClass == class then
+            -- For players not yet in party, fall back to seenClasses
+            -- (populated from LFG: broadcasts, protocol v2+).
+            if not knownClass then
+                if LFG.seenClasses[dungeonCode] and LFG.seenClasses[dungeonCode][name] then
+                    knownClass = LFG.seenClasses[dungeonCode][name].class
+                end
+            end
+            if knownClass and knownClass == class then
                 return true
             end
         end
@@ -5498,6 +5492,8 @@ function LFG.playerClass(name)
             end
         end
     end
+    -- Fallback for players not in our party (used for chat color display only).
+    -- Do NOT use this value for class-conflict checks; use classConflictsInGroup instead.
     return 'priest'
 end
 
