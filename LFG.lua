@@ -1361,9 +1361,9 @@ LFGComms:SetScript("OnEvent", function()
                     -- CR step-down: if we're the elected CR leader but this sender
                     -- sorts alphabetically before us, they should lead instead.
                     if lfmCR and LFG.crLeader and LFG.LFMDungeonCode == mDungeonCode then
-                        if arg2 < me then
-                            LFG.crStepDown(mDungeonCode, arg2)
-                        end
+                        if LFG.queueTimePriority(mDungeonCode, arg2, me) then
+    				LFG.crStepDown(mDungeonCode, arg2)
+			end
                     end
 
                     -- If we're a CR seeker and see a CR LFM, reset our election clock
@@ -1592,7 +1592,7 @@ LFGComms:SetScript("OnEvent", function()
                                             LFG.addTank(mDungeonCode, arg2, true, true) --faux, tank
                                         end
                                         if mRole == 'healer' and LFG.group[mDungeonCode].healer == '' then
-                                            LFG.addHealer(mDungeonCode, arg2, true, true) -- fause healer
+                                            LFG.addHealer(mDungeonCode, arg2, true, true) -- faux, healer
                                         end
                                         if mRole == 'damage' then
                                             LFG.addDamage(mDungeonCode, arg2, true, true) --faux, dps
@@ -1711,7 +1711,7 @@ LFG:SetScript("OnEvent", function()
             if not LFG.inGroup then
                 LFG.currentGroupSize = 1
             end
-            lfdebug('joineed' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
+            lfdebug('joined' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
             lfdebug('left' .. GetNumPartyMembers() + 1 .. ' < ' .. LFG.currentGroupSize)
 
             local someoneJoined = GetNumPartyMembers() + 1 > LFG.currentGroupSize
@@ -1929,7 +1929,7 @@ LFG:SetScript("OnEvent", function()
                     end
                 end
             end
-            lfdebug('ajunge aici ??')
+            lfdebug('running post-member-change logic')
             if LFG.isLeader then
                 LFG.sendMinimapDataToParty(LFG.LFMDungeonCode)
             end
