@@ -713,19 +713,6 @@ LFGComms:RegisterEvent("CHAT_MSG_ADDON")
 LFGComms:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
 LFGComms:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE_USER")
 LFGComms:RegisterEvent("CHAT_MSG_SYSTEM")
---"CHAT_MSG_CHANNEL_NOTICE_USER"
---Category: Communication
---
---Fired when something changes in the channel like moderation enabled, user is kicked, announcements changed and so on. CHAT_*_NOTICE in GlobalStrings.lua has a full list of available types.
---
---arg1
---type ("ANNOUNCEMENTS_OFF", "ANNOUNCEMENTS_ON", "BANNED", "OWNER_CHANGED", "INVALID_NAME", "INVITE", "MODERATION_OFF", "MODERATION_ON", "MUTED", "NOT_MEMBER", "NOT_MODERATED", "SET_MODERATOR", "UNSET_MODERATOR" )
---arg2
---If arg5 has a value then this is the user affected ( eg: "Player Foo has been kicked by Bar" ), if arg5 has no value then it's the person who caused the event ( eg: "Channel Moderation has been enabled by Bar" )
---arg4
---Channel name with number
---arg5
---Player that caused the event (eg "Player Foo has been kicked by Bar" )
 
 LFGComms:SetScript("OnEvent", function()
     if event then
@@ -1063,9 +1050,6 @@ LFGComms:SetScript("OnEvent", function()
                                 _G['roleCheckTank']:SetChecked(false)
                                 _G['roleCheckTank']:Disable()
                             else
-                                --not visible means confirmed by me
-                                --for me
-                                --should not get here i think, button will be disabled
                                 if LFG.isLeader then
                                     if arg4 ~= me then
                                         lfprint(LFG.classColors[LFG.playerClass(arg4)].c .. arg4 .. COLOR_WHITE .. ' has chosen '
@@ -1103,9 +1087,6 @@ LFGComms:SetScript("OnEvent", function()
                                 _G['roleCheckHealer']:SetChecked(false)
                                 _G['roleCheckHealer']:Disable()
                             else
-                                --not visible means confirmed by me
-                                --for me
-                                --should not get here i think, button will be disabled
                                 if LFG.isLeader then
                                     if arg4 ~= me then
                                         lfprint(LFG.classColors[LFG.playerClass(arg4)].c .. arg4 .. COLOR_WHITE .. ' has chosen '
@@ -1243,7 +1224,6 @@ LFGComms:SetScript("OnEvent", function()
         end
         if event == 'CHAT_MSG_CHANNEL' and string.find(arg1, '[LFG]', 1, true) and arg8 == LFG.channelIndex and arg2 ~= me and --for lfm
                 string.find(arg1, '(LFM)', 1, true) then
-            --[LFG]:stratlive:(LFM):name
             local mEx = StringSplit(arg1, ':')
             if mEx[4] == me then
                 LFG.onlyAcceptFrom = arg2
@@ -2568,7 +2548,6 @@ function LFG.joinLFGChannelSafely()
         if self.elapsed >= 1 then
             local lfgIndex = GetChannelName(LFG.channel)
             if lfgIndex == 1 then
-                -- Only fix if General channel is not in slot 1, otherwise it might be fine
                 local generalIndex = GetChannelName("General")
                 if generalIndex ~= 1 then
                     lfprint('ERROR: LFG channel took channel 1! Fixing immediately...')
@@ -2607,7 +2586,6 @@ function LFG.fixChannelConflict()
                 LFG.joinLFGChannelSafely()
                 self:SetScript("OnUpdate", nil)
             elseif self.attempts >= 5 then
-                -- Reduced attempts from 10 to 5 and made it less aggressive
                 lfdebug('Channel order restoration taking longer than expected, but continuing...')
                 if self.attempts >= 8 then
                     lfprint('Channel order may be affected. If you experience issues, please /reload.')
@@ -2794,7 +2772,6 @@ function LFG.getAvailableDungeons(level, type, mine, partyIndex)
             dungeons[data.code] = true
         end
         if level >= data.minLevel and type == 3 then
-            --all available
             dungeons[data.code] = true
         end
     end
@@ -2803,10 +2780,8 @@ end
 
 function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
     if LFG_TYPE == 2 then
-        -- Elite Encounters
         LFG.dungeons = LFG.eliteEncounters
     else
-        -- Regular dungeons
         LFG.dungeons = LFG.allDungeons
     end
 
@@ -2873,7 +2848,6 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
 
     local dungeonIndex = 0
     for dungeon, data in LFG.fuckingSortAlready(LFG.dungeons) do
-        --    for dungeon, data in next, LFG.dungeons do
         if LFG.level >= data.minLevel and LFG.level <= data.maxLevel and LFG_TYPE ~= 3 then
 
             dungeonIndex = dungeonIndex + 1
@@ -2883,7 +2857,6 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             end
 
             if LFG.shouldHideButtonTextures() then
-	            -- Hide button textures for the newly created dungeon item
 			    LFG.hideButtonTextures("Dungeon_" .. data.code .. "_Button")
 			end
 
@@ -2945,8 +2918,6 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
         end
 
         if LFG.level >= data.minLevel and LFG_TYPE == 3 then
-            --all available
-
             dungeonIndex = dungeonIndex + 1
 
             if not LFG.availableDungeons[data.code] then
@@ -3046,7 +3017,6 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             end
         end
     end
-    -- end gray
 
     LFG.fixMainButton()
 
@@ -3062,7 +3032,7 @@ function LFG.fillAvailableDungeons(queueAfter, dont_scroll)
             end
         end
         if qDungeon == '' then
-            return false --do nothing
+            return false
         end
 
         dungeonName = LFG.dungeonNameFromCode(qDungeon)
@@ -3159,7 +3129,6 @@ function LFG.resetGroup()
 end
 
 function LFG.addTank(dungeon, name, faux, add)
-    -- Prevent adding same person twice, for both elite and regular dungeons
     if LFG.group[dungeon].tank == name or
             LFG.group[dungeon].healer == name or
             LFG.group[dungeon].damage1 == name or
@@ -3168,7 +3137,6 @@ function LFG.addTank(dungeon, name, faux, add)
         return false
     end
 
-    -- Class run: reject if another player of the same class is already slotted
     if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
@@ -3178,47 +3146,27 @@ function LFG.addTank(dungeon, name, faux, add)
     end
 
     if LFG.isEliteEncounter(dungeon) then
-        -- For Elite Encounters, allow any role to fill any slot
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         end
-        return false -- Group is full
+        return false
     else
-        -- Regular dungeons: strict tank role validation
         if LFG.group[dungeon].tank == '' then
             if add then
                 LFG.group[dungeon].tank = name
-            end
-            if not faux then
-                --SendChatMessage('found:tank:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3227,7 +3175,6 @@ function LFG.addTank(dungeon, name, faux, add)
 end
 
 function LFG.addHealer(dungeon, name, faux, add)
-    -- Prevent adding same person twice, for both elite and regular dungeons
     if LFG.group[dungeon].healer == name or
             LFG.group[dungeon].damage1 == name or
             LFG.group[dungeon].damage2 == name or
@@ -3236,7 +3183,6 @@ function LFG.addHealer(dungeon, name, faux, add)
         return false
     end
 
-    -- Class run: reject if another player of the same class is already slotted
     if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
@@ -3246,47 +3192,27 @@ function LFG.addHealer(dungeon, name, faux, add)
     end
 
     if LFG.isEliteEncounter(dungeon) then
-        -- For Elite Encounters, allow any role to fill any slot
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         end
-        return false -- Group is full
+        return false
     else
-        -- Regular dungeons: strict healer role validation
         if LFG.group[dungeon].healer == '' then
             if add then
                 LFG.group[dungeon].healer = name
-            end
-            if not faux then
-                --SendChatMessage('found:healer:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
             end
             return true
         end
@@ -3296,7 +3222,6 @@ end
 
 function LFG.remHealerOrDamage(dungeon, name)
     if LFG.isEliteEncounter(dungeon) then
-        -- For Elite Encounters, check all slots since any role can be in any slot
         if LFG.group[dungeon].tank == name then
             LFG.group[dungeon].tank = ''
         end
@@ -3327,7 +3252,6 @@ function LFG.addDamage(dungeon, name, faux, add)
         }
     end
 
-    -- Prevent adding same person twice, for both elite and regular dungeons
     if LFG.group[dungeon].tank == name or
             LFG.group[dungeon].healer == name or
             LFG.group[dungeon].damage1 == name or
@@ -3336,7 +3260,6 @@ function LFG.addDamage(dungeon, name, faux, add)
         return false
     end
 
-    -- Class run: reject if another player of the same class is already slotted
     if LFG.isClassRun(dungeon) and not faux and LFG.classRunEligible(dungeon) then
         local class = LFG.playerClass(name)
         if LFG.classConflictsInGroup(dungeon, class) then
@@ -3346,61 +3269,35 @@ function LFG.addDamage(dungeon, name, faux, add)
     end
 
     if LFG.isEliteEncounter(dungeon) then
-        -- For Elite Encounters, allow any role to fill any slot
         if LFG.group[dungeon].tank == '' then
             if add then LFG.group[dungeon].tank = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].healer == '' then
             if add then LFG.group[dungeon].healer = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         end
-        return false -- Group is full
+        return false
     else
-        -- Regular dungeons: strict damage role validation (up to 3 damage slots)
         if LFG.group[dungeon].damage1 == '' then
             if add then LFG.group[dungeon].damage1 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage2 == '' then
             if add then LFG.group[dungeon].damage2 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         elseif LFG.group[dungeon].damage3 == '' then
             if add then LFG.group[dungeon].damage3 = name end
-            if not faux then
-                --SendChatMessage('found:damage:' .. dungeon .. ':' .. name, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-            end
             return true
         end
-        return false -- Group full on damage
+        return false
     end
 end
 
@@ -3513,8 +3410,6 @@ function LFG.dungeonNameFromCode(code)
 end
 
 function LFG.dungeonFromCode(code)
-    -- Use dungeonNameFromCode (which already searches all tables) to get the
-    -- name key, then do a single O(1) hash lookup instead of three O(n) loops.
     local name = LFG.dungeonNameFromCode(code)
     if not name or name == 'Unknown' then return false end
     return LFG.allDungeons[name] or LFG.eliteEncounters[name] or false
@@ -3547,13 +3442,11 @@ function LFG.fuckingSortAlready(t, reverse)
         end)
     end
 
-    local i = 0 -- iterator variable
+    local i = 0
     local iter = function()
-        -- iterator function
         i = i + 1
         if a[i] == nil then
-            return nil
-            --        else return a[i]['code'], t[a[i]['name']]
+            return
         else
             return a[i]['name'], t[a[i]['name']]
         end
@@ -3605,13 +3498,6 @@ function LFG.checkLFMgroup(someoneDeclined)
     if currentGroupSize == readyNumber then
         LFG.findingMore = true
         lfdebug('group ready ? ' .. currentGroupSize .. ' = ' .. readyNumber)
-        lfdebug(LFG.LFMGroup.tank)
-        lfdebug(LFG.LFMGroup.healer)
-        lfdebug(LFG.LFMGroup.damage1)
-        lfdebug(LFG.LFMGroup.damage2)
-        lfdebug(LFG.LFMGroup.damage3)
-        --everyone is ready / confirmed roles
-
         LFG.group[LFG.LFMDungeonCode] = {
             tank = LFG.LFMGroup.tank,
             healer = LFG.LFMGroup.healer,
@@ -3693,7 +3579,6 @@ function LFG.fixMainButton()
 
     if LFG.inGroup then
         lfmButton:Show()
-        --GetNumPartyMembers() returns party size-1, doesnt count myself
         if GetNumPartyMembers() < (LFG.groupSizeMax - 1) and LFG.isLeader and queues > 0 then
             lfmButton:Enable()
             if LFG.LFMDungeonCode ~= '' then
@@ -3701,7 +3586,6 @@ function LFG.fixMainButton()
             end
         end
         if GetNumPartyMembers() == (LFG.groupSizeMax - 1) and LFG.isLeader then
-            --group full
             lfmButton:Disable()
             LFG.disableDungeonCheckButtons()
         end
@@ -3731,7 +3615,6 @@ function LFG.fixMainButton()
         leaveQueueButton:Disable()
     end
 
-    -- todo replace this with LFG_ROLE == ''
     local tankCheck = _G['RoleTank']
     local healerCheck = _G['RoleHealer']
     local damageCheck = _G['RoleDamage']
@@ -3779,15 +3662,11 @@ function LFG.sendLFGMessage(role)
         if LFG.supress[code] == role then
             LFG.supress[code] = ''
         else
-            -- Format: LFG:<dungeonCode>:<role>:<class>:<starttime>[:<cr>]
-            -- starttime added in protocol v3 for queue-time priority.
-            -- cr flag remains optional suffix. Old clients ignore extra fields safely.
             lfg_text = 'LFG:' .. code .. ':' .. role .. ':' .. myClass .. ':' .. LFG.queueStartTime .. crFlag .. ' ' .. lfg_text
         end
     end
     lfg_text = string.sub(lfg_text, 1, string.len(lfg_text) - 1)
 
-    -- Guard: all codes were suppressed → nothing to send
     if lfg_text == '' then
         lfdebug('sendLFGMessage: all codes suppressed for role ' .. role .. ', skipping send')
         return
@@ -3824,7 +3703,6 @@ function LFG.sendLFMStats(code)
         damage = damage + 1
     end
 
-    -- Append :cr so receiving clients know this LFM is from a CR leader
     local crSuffix = LFG.crLeader and ':cr' or ''
     ChatThrottleLib:SendChatMessage("BULK", "LFG_lfm",
         "LFM:" .. code .. ":" .. tank .. ":" .. healer .. ":" .. damage .. crSuffix,
@@ -3837,24 +3715,19 @@ end
 function LFG.isNeededInLFMGroup(role, name, code)
 
     if role == 'tank' and LFG.group[code].tank == '' then
-        --        LFG.group[code].tank = name
         return true
     end
     if role == 'healer' and LFG.group[code].healer == '' then
-        --        LFG.group[code].healer = name
         return true
     end
     if role == 'damage' then
         if LFG.group[code].damage1 == '' then
-            --            LFG.group[code].damage1 = name
             return true
         end
         if LFG.group[code].damage2 == '' then
-            --            LFG.group[code].damage2 = name
             return true
         end
         if LFG.group[code].damage3 == '' then
-            --            LFG.group[code].damage3 = name
             return true
         end
     end
@@ -3978,25 +3851,21 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
             LFG.group[dungeonCode].damage3 = ''
         end
     end
-    -- Clear stale class data so a returning player on a different class isn't falsely rejected
     for dungeonCode, _ in next, LFG.seenClasses do
         if LFG.seenClasses[dungeonCode] then
             LFG.seenClasses[dungeonCode][name] = nil
         end
     end
-    -- Clear stale queue time so a returning player doesn't carry a stale priority
     for dungeonCode, _ in next, LFG.seenQueueTimes do
         if LFG.seenQueueTimes[dungeonCode] then
             LFG.seenQueueTimes[dungeonCode][name] = nil
         end
     end
-    -- Clear stale CR candidate entry
     for dungeonCode, _ in next, LFG.crCandidates do
         if LFG.crCandidates[dungeonCode] then
             LFG.crCandidates[dungeonCode][name] = nil
         end
     end
-    -- Re-run election check in case the departed player was our elected leader
     LFG.crCheckElection()
 end
 
@@ -4016,8 +3885,6 @@ function LFG.resetFormedGroups()
 end
 
 function LFG.confirmUpdateSlot(slot, name, status)
-    -- Slot names: 'Tank','Healer','Damage1','Damage2','Damage3'
-    -- Widgets live inside LFGGroupReady with prefix 'Confirm'
     local tex = _G['LFGGroupReadyConfirmStatus' .. slot]
     if tex then
         if status == 'accepted' then
@@ -4037,8 +3904,6 @@ function LFG.confirmReset()
 end
 
 function LFG.confirmPopulate(groupData, dungeonCode, dungeonName)
-    -- DungeonName is already set by the party:ready handler via LFGGroupReadyDungeonName;
-    -- confirmPopulate just resets the slot icons.
     LFG.confirmReset()
     local slotMap = {
         { field = 'tank',    slot = 'Tank'    },
@@ -4078,7 +3943,6 @@ function LFG.showDungeonObjectives(code, numObjectivesComplete)
 
     lfdebug('LFGObjectives.objectivesComplete = ' .. LFGObjectives.objectivesComplete)
 
-    --hideall
     for index, _ in next, LFG.objectivesFrames do
         if _G["LFGObjective" .. index] then
             _G["LFGObjective" .. index]:Hide()
@@ -4111,7 +3975,6 @@ function LFG.showDungeonObjectives(code, numObjectivesComplete)
                     _G["LFGObjective" .. index .. 'ObjectiveComplete']:Show()
                     _G["LFGObjective" .. index .. 'ObjectivePending']:Hide()
                 else
-                    -- _G["LFGObjective" .. index .. 'Objective']:SetText(COLOR_DISABLED .. '0/1 ' .. boss .. ' defeated')
                     _G["LFGObjective" .. index .. 'Objective']:SetText(COLOR_DISABLED .. '' .. boss .. '')
                 end
 
@@ -4146,12 +4009,6 @@ end
 
 LFG.browseNames = {}
 
--- ---------------------------------------------------------------------------
--- LFG.NormalizeGroupRoster(code)
--- Deduplicates and compacts the group roster, removing duplicate names and
--- packing damage slots so there are no gaps. Guards against concat crashes
--- by ensuring empty slots are '' not nil.
--- ---------------------------------------------------------------------------
 function LFG.NormalizeGroupRoster(code)
     if not code or not LFG.group[code] then return end
     local g = LFG.group[code]
@@ -4167,7 +4024,6 @@ function LFG.NormalizeGroupRoster(code)
             end
         end
     end
-    -- Compact damage slots: collect non-nil, non-Dummy values then reassign
     local dmg = {}
     for _, r in ipairs({"damage1","damage2","damage3"}) do
         local v = g[r]
@@ -4184,11 +4040,6 @@ end
 
 LFG.pendingRefresh = false
 
--- ---------------------------------------------------------------------------
--- LFG.QueueRefresh(code)
--- Deferred 0.2s roster normalize + minimap/list update.
--- Uses an OnUpdate frame instead of C_Timer (not available on 3.3.5a).
--- ---------------------------------------------------------------------------
 function LFG.QueueRefresh(code)
     if code then
         LFG.NormalizeGroupRoster(code)
@@ -4211,12 +4062,6 @@ function LFG.QueueRefresh(code)
     end)
 end
 
--- ---------------------------------------------------------------------------
--- LFG.BrowseRow_Update(code)
--- Updates ONE dungeon row's widgets in-place; no hide-all / re-sort.
--- Called by updateDungeonsSpamDisplay on every incoming chat message so
--- the Browse window is live instead of waiting for the 30s timer cycle.
--- ---------------------------------------------------------------------------
 function LFG.BrowseRow_Update(code)
     if not _G['LFGBrowse'] or not _G['LFGBrowse']:IsVisible() then return end
     if not LFG.browseFrames[code] then return end
@@ -4311,12 +4156,6 @@ function LFG.BrowseRow_Update(code)
     end
 end
 
--- ---------------------------------------------------------------------------
--- LFG_ManualRefresh()
--- Player-triggered refresh: evict stale cache entries, rebuild counts,
--- resend own broadcast, full redraw. Button cooldown uses OnUpdate (3.3.5a
--- compatible; C_Timer is not available).
--- ---------------------------------------------------------------------------
 function LFG_ManualRefresh()
     local now = time()
     local STALE_SECONDS = 45
@@ -4392,27 +4231,21 @@ end
 function LFG.LFGBrowse_Update()
     lfdebug('LFGBrowse_Update time is ' .. LFGTime.second)
 
-    -- ClassRunCheckButton is replaced by per-row CR checkboxes; nothing to show/hide globally.
-
-    --hide all
     for _, frame in next, LFG.browseFrames do
         _G["BrowseFrame_" .. frame.code]:Hide()
     end
 
     local dungeonIndex = 0
 
-    -- Fix: Use a regular for loop instead of relying on fuckingSortAlready
     local sortedDungeons = {}
     for dungeon, data in next, LFG.dungeons do
         table.insert(sortedDungeons, {name = dungeon, data = data})
     end
 
-    -- Sort dungeons by minLevel in descending order
     table.sort(sortedDungeons, function(a, b)
         return a.data.minLevel > b.data.minLevel
     end)
 
-    -- Now iterate through the sorted table
     for _, dungeonData in ipairs(sortedDungeons) do
         local dungeon = dungeonData.name
         local data = dungeonData.data
@@ -4547,8 +4380,6 @@ function LFG.LFGBrowse_Update()
     _G['BrowseDungeonListScrollFrame']:UpdateScrollChildRect()
 end
 
--- XML called methods and public functions
-
 function checkRoleCompatibility(role)
     if role == 'tank' and (LFG.class == 'priest' or LFG.class == 'mage' or LFG.class == 'warlock' or LFG.class == 'hunter' or LFG.class == 'rogue') then
         GameTooltip:AddLine(ROLE_BAD_TOOLTIP, 1, 0, 0);
@@ -4579,7 +4410,6 @@ function acceptRole()
 
     SendAddonMessage(LFG_ADDON_CHANNEL, "acceptRole:" .. myRole, "PARTY")
     LFG.showMyRoleIcon(myRole)
-    --LFGRoleCheck:Hide()
     _G['LFGRoleCheck']:Hide()
 end
 
@@ -4598,13 +4428,11 @@ function declineRole()
     if LFG.dungeons[drName] then LFG.dungeons[drName].myRole = myRole end
     SendAddonMessage(LFG_ADDON_CHANNEL, "declineRole:" .. myRole, "PARTY")
 
-    --LFGRoleCheck:Hide()
     _G['LFGRoleCheck']:Hide()
 end
 
 function LFG_Toggle()
 
-    -- remove channel from every chat frame
     LFG.removeChannelFromWindows()
 
     if LFG.level == 0 then
@@ -4650,7 +4478,6 @@ end
 function sayReady()
     if LFG.inGroup and GetNumPartyMembers() + 1 == LFG.groupSizeMax then
         _G['LFGGroupReady']:Hide()
-        -- Use the helper to find data across all tables
         local dungeonData = LFG.dungeonFromCode(LFG.groupFullCode)
         
         if not dungeonData then return end
@@ -4671,11 +4498,9 @@ function sayNotReady()
     if LFG.inGroup and GetNumPartyMembers() + 1 == LFG.groupSizeMax then
         _G['LFGGroupReady']:Hide()
 
-        -- Use the helper to find data across all tables
         local dungeonData = LFG.dungeonFromCode(LFG.groupFullCode)
 
         if not dungeonData then
-            -- Fallback: if we can't find the role data, just send the global LFG_ROLE
             SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. (LFG_ROLE or "damage"), "PARTY")
         else
             SendAddonMessage(LFG_ADDON_CHANNEL, "notReadyAs:" .. dungeonData.myRole, "PARTY")
@@ -4704,12 +4529,10 @@ function LFG.SetSingleRole(role)
 
 end
 
--- Per-dungeon class run setter, called by each dungeon row's CR checkbox.
 function LFGsetClassRunForDungeon(code, checked)
     if LFG.findingGroup or LFG.findingMore then return end
     LFG.classRunPerDungeon[code] = checked and true or false
     lfdebug('classRunPerDungeon[' .. tostring(code) .. '] = ' .. tostring(checked))
-    -- Auto-enable the queue checkbox when CR is turned on, respecting the queue limit
     if checked then
         local queueBtn = _G['Dungeon_' .. code .. '_CheckButton']
         if queueBtn and not queueBtn:GetChecked() then
@@ -4721,7 +4544,6 @@ function LFGsetClassRunForDungeon(code, checked)
                 queueBtn:SetChecked(true)
                 queueFor('Dungeon_' .. code .. '_CheckButton', true)
             else
-                -- Limit reached: uncheck the CR box since we can't queue this dungeon
                 LFG.classRunPerDungeon[code] = false
                 local crBtn = _G['Dungeon_' .. code .. 'ClassRunBtn']
                 if crBtn then crBtn:SetChecked(false) end
@@ -4730,7 +4552,6 @@ function LFGsetClassRunForDungeon(code, checked)
     end
 end
 
--- Legacy stub kept for safety; the old global ClassRunCheckButton is now hidden.
 function LFGsetClassRun(checked)
     lfdebug('LFGsetClassRun (legacy) called - ignored')
 end
@@ -4741,7 +4562,6 @@ function LFGsetRole(role, status, readyCheck)
     local healerCheck = _G['RoleHealer']
     local damageCheck = _G['RoleDamage']
 
-    --ready check window
     local readyCheckTank = _G['roleCheckTank']
     local readyCheckHealer = _G['roleCheckHealer']
     local readyCheckDamage = _G['roleCheckDamage']
@@ -4749,8 +4569,6 @@ function LFGsetRole(role, status, readyCheck)
     if readyCheck then
         _G['LFGRoleCheckAcceptRole']:Enable()
 
-        -- Apply the new role to the ready-check checkboxes FIRST so the
-        -- button state is evaluated against the updated selection.
         readyCheckHealer:SetChecked(role == 'healer')
         readyCheckDamage:SetChecked(role == 'damage')
         readyCheckTank:SetChecked(role == 'tank')
@@ -4815,7 +4633,6 @@ function DungeonType_OnClick(self, arg1)
 
     _G['LFGDungeonsText']:SetText(LFG.types[LFG_TYPE])
 
-    -- dequeue everything from before
     for dungeon, data in next, LFG.dungeons do
         if _G["Dungeon_" .. data.code .. '_CheckButton'] then
             _G["Dungeon_" .. data.code .. '_CheckButton']:SetChecked(false)
@@ -4852,7 +4669,6 @@ function DungeonType_OnClick(self, arg1)
 
     LFG.fillAvailableDungeons()
 
-    -- ADD THIS LINE - Hide button textures for newly created dungeon buttons
     if LFG.shouldHideButtonTextures() then
     	LFG.hideAllAddonButtonTextures()
     end
@@ -4896,7 +4712,7 @@ function LFG_ShowMinimap()
             if LFG.group[dungeonCode].healer ~= '' or (not LFG.inGroup and string.find(LFG_ROLE, 'healer', 1, true)) then
                 healer = healer + 1
             end
-            if LFG.group[dungeonCode].damage1 ~= '' or (not LFG.inGroup and string.find(LFG_ROLE, 'damage', 1, true)) then
+            if LFG.group[dungeonCode].damage1 ~= '' or (not LFG.inGroup tensors and string.find(LFG_ROLE, 'damage', 1, true)) then
                 damage = damage + 1
             end
             if LFG.group[dungeonCode].damage2 ~= '' then
@@ -4924,8 +4740,7 @@ function LFG_ShowMinimap()
             _G['LFGMinimap_' .. dungeonCode .. 'Background']:SetTexture('Interface\\addons\\LFG\\images\\background\\ui-lfg-background-' .. background)
             _G['LFGMinimap_' .. dungeonCode .. 'DungeonName']:SetText(dungeonName)
 
-            --_G['LFGMinimap_' .. dungeonCode .. 'MyRole']:SetTexture('Interface\\addons\\LFG\\images\\ready_' .. LFG_ROLE)
-            _G['LFGMinimap_' .. dungeonCode .. 'MyRole']:Hide() -- hide for now  - dev
+            _G['LFGMinimap_' .. dungeonCode .. 'MyRole']:Hide()
 
             if tank == 0 then
                 _G['LFGMinimap_' .. dungeonCode .. 'ReadyIconTank']:SetDesaturated(1)
@@ -5039,13 +4854,11 @@ function queueFor(name, status)
         end
     else
         if queues < LFG.maxDungeonsInQueue then
-            --LFG.enableDungeonCheckButtons()
+            -- Allowed
         else
             for _, frame in next, LFG.availableDungeons do
                 local dungeonName = LFG.dungeonNameFromCode(frame.code)
                 lfdebug('dungeonName in queuefor = ' .. dungeonName)
-                lfdebug('frame.code in queuefor = ' .. frame.code)
-                lfdebug('frame.background in queuefor = ' .. frame.background)
                 if not LFG.dungeons[dungeonName].queued then
                     _G["Dungeon_" .. frame.code .. '_CheckButton']:Disable()
                     _G['Dungeon_' .. frame.code .. 'Text']:SetText(COLOR_DISABLED .. dungeonName)
@@ -5064,9 +4877,6 @@ end
 
 function findMore()
 
-    --LFGsetRole('tank', true, true)
-
-    -- find queueing dungeon
     local qDungeon = ''
     for _, frame in next, LFG.availableDungeons do
         if _G["Dungeon_" .. frame.code .. '_CheckButton']:GetChecked() then
@@ -5076,7 +4886,6 @@ function findMore()
 
     LFG.LFMDungeonCode = qDungeon
 
-    -- Guard: if no dungeon is selected there is nothing to role-check for.
     if qDungeon == '' then
         lfdebug('findMore: no dungeon selected, aborting roleCheck')
         return
@@ -5098,7 +4907,6 @@ function findMore()
 
     LFG.fixMainButton()
 
-    -- disable the button disable spam clicking it
     _G['findMoreButton']:Disable()
 
     BrowseDungeonListFrame_Update()
@@ -5111,8 +4919,6 @@ function joinQueue(roleID, name)
 
     local nameEx = StringSplit(name, '_')
     local mCode = nameEx[2]
-
-    --leaveQueue('from join queue')
 
     if _G['Dungeon_' .. mCode .. '_CheckButton'] ~= nil then
         _G['Dungeon_' .. mCode .. '_CheckButton']:SetChecked(true)
@@ -5157,7 +4963,6 @@ function findGroup()
         if data.queued then
             lfdebug('in find group queued for : ' .. dungeon)
             dungeonsText = dungeonsText .. dungeon .. ', '
-            --lfg_text = 'LFG:' .. data.code .. ':' .. LFG_ROLE .. ' ' .. lfg_text
         end
     end
 
@@ -5191,7 +4996,6 @@ function LFG.hideConfirmMode()
         if w then w:Hide() end
     end
     _G['LFGGroupReadyConfirmTimer']:SetText('')
-    -- Restore original button text/scripts
     _G['LFGGroupReadyAwesome']:SetText("Let's do this!")
     _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() sayReady() end)
     _G['LFGGroupReadyNotCool']:SetText('Leave Queue')
@@ -5248,7 +5052,6 @@ function leaveQueue(callData)
     LFGGroupReadyFrameCloser:Hide()
     LFGGroupReadyFrameCloser.response = ''
 
-    -- Clear CR election state
     LFG.crLeader = false
     LFG.crCandidates = {}
     LFG.crElectionTime = {}
@@ -5309,7 +5112,6 @@ function leaveQueue(callData)
     LFG.enableDungeonCheckButtons()
 
     LFG.GetPossibleRoles()
-    --LFGsetRole(LFG_ROLE)
 
     if LFG.LFMDungeonCode ~= '' then
         if _G["Dungeon_" .. LFG.LFMDungeonCode .. '_CheckButton'] then
@@ -5318,10 +5120,6 @@ function leaveQueue(callData)
             if LFG.dungeons[lqName] then LFG.dungeons[lqName].queued = true end
         end
     end
-
-    local tankCheck = _G['RoleTank']
-    local healerCheck = _G['RoleHealer']
-    local damageCheck = _G['RoleDamage']
 
     DungeonListFrame_Update()
     BrowseDungeonListFrame_Update()
@@ -5339,14 +5137,11 @@ function LFGObjectives.objectiveComplete(bossName, dontSendToAll)
 
                 _G["LFGObjective" .. index .. 'ObjectiveComplete']:Show()
                 _G["LFGObjective" .. index .. 'ObjectivePending']:Hide()
-                -- _G["LFGObjective" .. index .. 'Objective']:SetText(COLOR_WHITE .. '1/1 ' .. bossName .. ' defeated')
                 _G["LFGObjective" .. index .. 'Objective']:SetText(COLOR_WHITE .. '' .. bossName .. '')
 
                 LFGObjectives.lastObjective = index
                 LFGObjectives:Show()
                 code = LFG.objectivesFrames[index].code
-
-            else
             end
         end
         if LFG.objectivesFrames[index].completed then
@@ -5362,7 +5157,6 @@ function LFGObjectives.objectiveComplete(bossName, dontSendToAll)
             SendAddonMessage(LFG_ADDON_CHANNEL, "objectives:" .. code .. ":" .. objectivesString, "PARTY")
         end
 
-        --dungeon complete ?
         local dungeonName, iconCode = LFG.dungeonNameFromCode(code)
         if LFGObjectives.objectivesComplete == LFG.tableSize(LFG.objectivesFrames) or
                 (code == 'brdarena' and LFGObjectives.objectivesComplete == 1) then
@@ -5568,9 +5362,6 @@ function LFG.updateDungeonsSpamDisplay(code, lfm, numLFM)
         end
     end
 
-    -- Live per-row refresh: update only this dungeon's widgets immediately
-    -- instead of waiting for the next full BrowseDungeonListFrame_Update().
-    -- Falls back to full rebuild if the row doesn't exist yet (first sighting).
     if LFG.browseFrames[code] and _G['BrowseFrame_' .. code] and _G['BrowseFrame_' .. code]:IsShown() then
         LFG.BrowseRow_Update(code)
     else
@@ -5597,7 +5388,7 @@ LFG.allDungeons = {
     ['Scarlet Monastery Armory'] = { minLevel = 34, maxLevel = 41, code = 'smarmory', queued = false, canQueue = true, background = 'scarletmonastery', myRole = '' },
     ['Scarlet Monastery Cathedral'] = { minLevel = 37, maxLevel = 45, code = 'smcath', queued = false, canQueue = true, background = 'scarletmonastery', myRole = '' },
     ['Razorfen Downs'] = { minLevel = 36, maxLevel = 46, code = 'rfd', queued = false, canQueue = true, background = 'razorfendowns', myRole = '' },
-    ['Glittermurk Mines'] = { minLevel = 39, maxLevel = 44, code = 'ggm', queued = false, canQueue = true, background = 'tcg', myRole = '' }, -- Glittermurk
+    ['Glittermurk Mines'] = { minLevel = 39, maxLevel = 44, code = 'ggm', queued = false, canQueue = true, background = 'tcg', myRole = '' },
     ['Uldaman'] = { minLevel = 40, maxLevel = 51, code = 'ulda', queued = false, canQueue = true, background = 'uldaman', myRole = '' },
     ['Zul\'Farrak'] = { minLevel = 44, maxLevel = 54, code = 'zf', queued = false, canQueue = true, background = 'zulfarak', myRole = '' },
     ['Maraudon Orange'] = { minLevel = 47, maxLevel = 55, code = 'maraorange', queued = false, canQueue = true, background = 'maraudon', myRole = '' },
@@ -5608,13 +5399,11 @@ LFG.allDungeons = {
     ['Blackrock Depths Arena'] = { minLevel = 52, maxLevel = 60, code = 'brdarena', queued = false, canQueue = true, background = 'blackrockdepths', myRole = '' },
     ['Blackrock Depths Emperor'] = { minLevel = 54, maxLevel = 60, code = 'brdemp', queued = false, canQueue = true, background = 'blackrockdepths', myRole = '' },
     ['Lower Blackrock Spire'] = { minLevel = 55, maxLevel = 60, code = 'lbrs', queued = false, canQueue = true, background = 'blackrockspire', myRole = '' },
-    ['Baradin Hold'] = { minLevel = 57, maxLevel = 60, code = 'bh', queued = false, canQueue = true, background = 'kc', myRole = '' }, --Baradin Hold
-    -- ['Stonetalon Peaks'] = { minLevel = 57, maxLevel = 60, code = 'stp', queued = false, canQueue = true, background = 'hfq', myRole = '' }, --Stonetalon Peaks
+    ['Baradin Hold'] = { minLevel = 57, maxLevel = 60, code = 'bh', queued = false, canQueue = true, background = 'kc', myRole = '' },
     ['Scholomance'] = { minLevel = 58, maxLevel = 60, code = 'scholo', queued = false, canQueue = true, background = 'scholomance', myRole = '' },
     ['Stratholme: Undead District'] = { minLevel = 58, maxLevel = 60, code = 'stratud', queued = false, canQueue = true, background = 'stratholme', myRole = '' },
     ['Stratholme: Scarlet Bastion'] = { minLevel = 58, maxLevel = 60, code = 'stratlive', queued = false, canQueue = true, background = 'stratholme', myRole = '' },
     ['Upper Blackrock Spire'] = { minLevel = 58, maxLevel = 60, code = 'ubrs', queued = false, canQueue = true, background = 'blackrockspire', myRole = '' },
-
 }
 
 LFG.eliteEncounters = {
@@ -5630,296 +5419,44 @@ LFG.eliteEncounters = {
 }
 
 LFG.bosses = {
-    ['rfc'] = {
-        'Oggleflint',
-        'Taragaman the Hungerer',
-        'Jergosh the Invoker',
-        'Bazzalan'
-    },
-    ['wc'] = {
-        'Lord Cobrahn',
-        'Lady Anacondra',
-        'Kresh',
-        'Lord Pythas',
-        'Skum',
-        'Nyx',
-        'Lord Serpentis',
-        'Verdan the Everliving',
-        'Mutanus the Devourer'
-    },
-    ['dm'] = {
-        'Rhahk\'zor',
-        'Sneed',
-        'Gilnid',
-        'Mr. Smite',
-        'Cookie',
-        'Captain Greenskin',
-        'Edwin VanCleef'
-    },
-    ['sfk'] = {
-        'Rethilgore',
-        'Razorclaw the Butcher',
-        'Baron Silverlaine',
-        'Commander Springvale',
-        'Odo the Blindwatcher',
-        'Steward Graves',
-        'Fenrus the Devourer',
-        'Wolf Master Nandos',
-        'Archmage Arugal'
-    },
-    ['bfd'] = {
-        'Ghamoo-ra',
-        'Lady Sarevess',
-        'Gelihast',
-        'Lorgus Jett',
-        'Baron Aquanis',
-        'Twilight Lord Kelris',
-        'Old Serra\'kis',
-        'Aku\'mai'
-    },
-    ['stocks'] = {
-        'Targorr the Dread',
-        'Kam Deepfury',
-        'Hamhock',
-        'Bazil Thredd',
-        'Dextren Ward'
-    },
-    ['gnomer'] = {
-        'Grubbis',
-        'Viscous Fallout',
-        'Electrocutioner 6000',
-        'Crowd Pummeler 9-60',
-        'Mekgineer Thermaplugg'
-    },
-    ['rfk'] = {
-        'Roogug',
-        'Aggem Thorncurse',
-        'Death Speaker Jargba',
-        'Overlord Ramtusk',
-        'Agathelos the Raging',
-        'Charlga Razorflank'
-    },
-    ['smgy'] = {
-        'Interrogator Vishas',
-        'Bloodmage Thalnos'
-    },
-    ['smarmory'] = {
-        'Herod'
-    },
-    ['smcath'] = {
-        'High Inquisitor Fairbanks',
-        'Scarlet Commander Mograine',
-        'High Inquisitor Whitemane'
-    },
-    ['smlib'] = {
-        'Houndmaster Loksey',
-        'Arcanist Doan'
-    },
-    ['rfd'] = {
-        'Tuten\'kash',
-        'Mordresh Fire Eye',
-        'Glutton',
-        'Plaguemaw the Rotting',
-        'Amnennar the Coldbringer'
-    },
-    ['ggm'] = { -- Glittermurk
-        'Supervisor Grimgash',
-        'Foreman Sprocket',
-        'Krakken',
-        'Primscale',
-        'Murklurk',
-        'Gnash'
-    },
-    ['ulda'] = {
-        'Revelosh',
-        'The Lost Dwarves',
-        'Ironaya',
-        'Obsidian Sentinel',
-        'Ancient Stone Keeper',
-        'Galgann Firehammer',
-        'Grimlok',
-        'Sentinel of Archaedas'
-    },
-    ['zf'] = {
-        'Antu\'sul',
-        'Theka the Martyr',
-        'Witch Doctor Zum\'rah',
-        'Sandfury Executioner',
-        'Nekrum Gutchewer',
-        'Shadowpriest Sezz\'ziz',
-        'Sergeant Bly',
-        'Hydromancer Velratha',
-        'Ruuzlu',
-        'Chief Ukorz Sandscalp'
-    },
-    ['maraorange'] = {
-        'Noxxion',
-        'Razorlash'
-    },
-    ['marapurple'] = {
-        'Lord Vyletongue',
-        'Celebras the Cursed'
-    },
-    ['maraprincess'] = {
-        'Tinkerer Gizlock',
-        'Landslide',
-        'Rotgrip',
-        'Princess Theradras'
-    },
-    ['st'] = {
-        'Gasher',
-        'Atal\'alarion',
-        'Dreamscythe',
-        'Weaver',
-        'Jammal\'an the Prophet',
-        'Ogom the Wretched',
-        'Morphaz',
-        'Hazzas',
-        '???',
-        'Shade of Eranikus'
-    },
-    ['brd'] = {
-        'Lord Roccor',
-        'Bael\'Gar',
-        'Houndmaster Grebmar',
-        'High Interrogator Gerstahn',
-        'High Justice Grimstone',
-        'Pyromancer Loregrain',
-        'General Angerforge',
-        'Verek',
-        'Golem Lord Argelmach',
-        'Ribbly Screwspigot',
-        'Hurley Blackbreath',
-        'Plugger Spazzring',
-        'Phalanx',
-        'Lord Incendius',
-        'Fineous Darkvire',
-        'Warder Stilgiss',
-        'Watchman Doomgrip',
-        'Ambassador Flamelash',
-        'Magmus',
-        'Emperor Dagran Thaurissan'
-    },
-    ['brdemp'] = {
-        'General Angerforge',
-        'Golem Lord Argelmach',
-        'Emperor Dagran Thaurissan',
-        'Magmus',
-        'Ambassador Flamelash'
-    },
-    ['brdarena'] = {
-        'Anub\'shiah-s', --summoned
-        'Eviscerator-s', --summoned
-        'Gorosh the Dervish-s', --summoned
-        'Grizzle-s', --summoned
-        'Hedrum the Creeper-s', --summoned
-        'Ok\'thor the Breaker-s' --summoned
-    },
-    ['lbrs'] = {
-        'Highlord Omokk',
-        'Shadow Hunter Vosh\'gajin',
-        'War Master Voone',
-        'Mother Smolderweb',
-        '???',
-        'Quartermaster Zigris',
-        'Halycon',
-        'Gizrul the Slavener',
-        'Overlord Wyrmthalak'
-    },
-    ['bh'] = { --Baradin Hold
-        'Morrumus',
-        'Millhouse Manastorm',
-        'Astilos the Hollow',
-        'Calypso',
-        'Dak\'mal',
-        'Glagut',
-        'Nazrasash',
-        'Pirate Lord Blackstone'
-    },
-    -- ['stp'] = { --Stonetalon Peaks
-        -- '',
-        -- '',
-        -- '',
-        -- '',
-        -- ''
-    -- },
-    ['scholo'] = {
-        'Kirtonos the Herald',
-        'Jandice Barov',
-        'Rattlegore',
-        'Marduk Blackpool',
-        'Vectus',
-        'Ras Frostwhisper',
-        'Instructor Malicia',
-        '???',
-        'Doctor Theolen Krastinov',
-        'Lorekeeper Polkelt',
-        'The Ravenian',
-        'Lord Alexei Barov',
-        'Lady Illucia Barov',
-        'Darkmaster Gandling'
-    },
-    ['stratlive'] = {
-        'Fras Siabi',
-        'Hearthsinger Forresten',
-        'The Unforgiven',
-        'Postmaster Malown',
-        'Timmy the Cruel',
-        'Malor the Zealous',
-        'Cannon Master Willey',
-        'Crimson Hammersmith',
-        'Archivist Galford',
-        'Balnazzar'
-    },
-    ['stratud'] = {
-        'Magistrate Barthilas',
-        'Stonespine',
-        'Nerub\'enkan',
-        'Black Guard Swordsmith',
-        'Maleki the Pallid',
-        'Baroness Anastari',
-        'Ramstein the Gorger',
-        'Baron Rivendare'
-    },
-    ['ubrs'] = {
-        'Pyroguard Emberseer',
-        'Solakar Flamewreath',
-        'Warchief Rend Blackhand',
-        'Gyth',
-        'The Beast',
-        'General Drakkisath'
-    },
-    ['ja'] = {
-        'Vile Priestess Hexx',
-    },
-    ['ff'] = {
-        --'Vile Priestess Hexx',
-    },
-    ['silithusd'] = {
-        --'Vile Priestess Hexx',
-    },
-    ['aob'] = {
-        --'',
-    },
-    ['swk'] = {
-        --'Darkmaster Gandogar',
-    },
-    ['moshogg'] = {
-        --'Kor\'gresh Coldrage',
-    },
-    ['durnholde'] = {
-        --'Shuja Grimtotem',
-        --'Drudge',
-        --'Skullbreaker',
-    },
-    ['stromgarde'] = {
-        --'Lord Falconcrest',
-        --'Boulderfist Lord',
-        --'Syndicate Assassin',
-    },
-    ['lmennar'] = {
-        --'Azrathus',
-    },
+    ['rfc'] = { 'Oggleflint', 'Taragaman the Hungerer', 'Jergosh the Invoker', 'Bazzalan' },
+    ['wc'] = { 'Lord Cobrahn', 'Lady Anacondra', 'Kresh', 'Lord Pythas', 'Skum', 'Nyx', 'Lord Serpentis', 'Verdan the Everliving', 'Mutanus the Devourer' },
+    ['dm'] = { 'Rhahk\'zor', 'Sneed', 'Gilnid', 'Mr. Smite', 'Cookie', 'Captain Greenskin', 'Edwin VanCleef' },
+    ['sfk'] = { 'Rethilgore', 'Razorclaw the Butcher', 'Baron Silverlaine', 'Commander Springvale', 'Odo the Blindwatcher', 'Steward Graves', 'Fenrus the Devourer', 'Wolf Master Nandos', 'Archmage Arugal' },
+    ['bfd'] = { 'Ghamoo-ra', 'Lady Sarevess', 'Gelihast', 'Lorgus Jett', 'Baron Aquanis', 'Twilight Lord Kelris', 'Old Serra\'kis', 'Aku\'mai' },
+    ['stocks'] = { 'Targorr the Dread', 'Kam Deepfury', 'Hamhock', 'Bazil Thredd', 'Dextren Ward' },
+    ['gnomer'] = { 'Grubbis', 'Viscous Fallout', 'Electrocutioner 6000', 'Crowd Pummeler 9-60', 'Mekgineer Thermaplugg' },
+    ['rfk'] = { 'Roogug', 'Aggem Thorncurse', 'Death Speaker Jargba', 'Overlord Ramtusk', 'Agathelos the Raging', 'Charlga Razorflank' },
+    ['smgy'] = { 'Interrogator Vishas', 'Bloodmage Thalnos' },
+    ['smarmory'] = { 'Herod' },
+    ['smcath'] = { 'High Inquisitor Fairbanks', 'Scarlet Commander Mograine', 'High Inquisitor Whitemane' },
+    ['smlib'] = { 'Houndmaster Loksey', 'Arcanist Doan' },
+    ['rfd'] = { 'Tuten\'kash', 'Mordresh Fire Eye', 'Glutton', 'Plaguemaw the Rotting', 'Amnennar the Coldbringer' },
+    ['ggm'] = { 'Supervisor Grimgash', 'Foreman Sprocket', 'Krakken', 'Primscale', 'Murklurk', 'Gnash' },
+    ['ulda'] = { 'Revelosh', 'The Lost Dwarves', 'Ironaya', 'Obsidian Sentinel', 'Ancient Stone Keeper', 'Galgann Firehammer', 'Grimlok', 'Sentinel of Archaedas' },
+    ['zf'] = { 'Antu\'sul', 'Theka the Martyr', 'Witch Doctor Zum\'rah', 'Sandfury Executioner', 'Nekrum Gutchewer', 'Shadowpriest Sezz\'ziz', 'Sergeant Bly', 'Hydromancer Velratha', 'Ruuzlu', 'Chief Ukorz Sandscalp' },
+    ['maraorange'] = { 'Noxxion', 'Razorlash' },
+    ['marapurple'] = { 'Lord Vyletongue', 'Celebras the Cursed' },
+    ['maraprincess'] = { 'Tinkerer Gizlock', 'Landslide', 'Rotgrip', 'Princess Theradras' },
+    ['st'] = { 'Gasher', 'Atal\'alarion', 'Dreamscythe', 'Weaver', 'Jammal\'an the Prophet', 'Ogom the Wretched', 'Morphaz', 'Hazzas', '???', 'Shade of Eranikus' },
+    ['brd'] = { 'Lord Roccor', 'Bael\'Gar', 'Houndmaster Grebmar', 'High Interrogator Gerstahn', 'High Justice Grimstone', 'Pyromancer Loregrain', 'General Angerforge', 'Verek', 'Golem Lord Argelmach', 'Ribbly Screwspigot', 'Hurley Blackbreath', 'Plugger Spazzring', 'Phalanx', 'Lord Incendius', 'Fineous Darkvire', 'Warder Stilgiss', 'Watchman Doomgrip', 'Ambassador Flamelash', 'Magmus', 'Emperor Dagran Thaurissan' },
+    ['brdemp'] = { 'General Angerforge', 'Golem Lord Argelmach', 'Emperor Dagran Thaurissan', 'Magmus', 'Ambassador Flamelash' },
+    ['brdarena'] = { 'Anub\'shiah-s', 'Eviscerator-s', 'Gorosh the Dervish-s', 'Grizzle-s', 'Hedrum the Creeper-s', 'Ok\'thor the Breaker-s' },
+    ['lbrs'] = { 'Highlord Omokk', 'Shadow Hunter Vosh\'gajin', 'War Master Voone', 'Mother Smolderweb', '???', 'Quartermaster Zigris', 'Halycon', 'Gizrul the Slavener', 'Overlord Wyrmthalak' },
+    ['bh'] = { 'Morrumus', 'Millhouse Manastorm', 'Astilos the Hollow', 'Calypso', 'Dak\'mal', 'Glagut', 'Nazrasash', 'Pirate Lord Blackstone' },
+    ['scholo'] = { 'Kirtonos the Herald', 'Jandice Barov', 'Rattlegore', 'Marduk Blackpool', 'Vectus', 'Ras Frostwhisper', 'Instructor Malicia', '???', 'Doctor Theolen Krastinov', 'Lorekeeper Polkelt', 'The Ravenian', 'Lord Alexei Barov', 'Lady Illucia Barov', 'Darkmaster Gandling' },
+    ['stratlive'] = { 'Fras Siabi', 'Hearthsinger Forresten', 'The Unforgiven', 'Postmaster Malown', 'Timmy the Cruel', 'Malor the Zealous', 'Cannon Master Willey', 'Crimson Hammersmith', 'Archivist Galford', 'Balnazzar' },
+    ['stratud'] = { 'Magistrate Barthilas', 'Stonespine', 'Nerub\'enkan', 'Black Guard Swordsmith', 'Maleki the Pallid', 'Baroness Anastari', 'Ramstein the Gorger', 'Baron Rivendare' },
+    ['ubrs'] = { 'Pyroguard Emberseer', 'Solakar Flamewreath', 'Warchief Rend Blackhand', 'Gyth', 'The Beast', 'General Drakkisath' },
+    ['ja'] = { 'Vile Priestess Hexx' },
+    ['ff'] = {},
+    ['silithusd'] = {},
+    ['aob'] = {},
+    ['swk'] = {},
+    ['moshogg'] = {},
+    ['durnholde'] = {},
+    ['stromgarde'] = {},
+    ['lmennar'] = {},
 };
 
 -- utils
@@ -5933,8 +5470,6 @@ function LFG.isEliteEncounter(dungeonCode)
     return false
 end
 
--- Returns true if this dungeon has class-specific set gear and benefits from a class run.
--- Covers: Baradin Hold, LBRS, UBRS, Scholomance, both Stratholme variants.
 local CLASS_RUN_ELIGIBLE = {
     bh        = true,
     lbrs      = true,
@@ -5947,8 +5482,6 @@ function LFG.classRunEligible(dungeonCode)
     return CLASS_RUN_ELIGIBLE[dungeonCode] == true
 end
 
--- Returns true if candidate a should be preferred over b based on queue time.
--- Buckets into 30-second windows to absorb clock skew; alphabetical tiebreak within bucket.
 function LFG.queueTimePriority(dungeonCode, nameA, nameB)
     local times = LFG.seenQueueTimes[dungeonCode] or {}
     local tA = (nameA == me and LFG.queueStartTime ~= 0) and LFG.queueStartTime or (times[nameA] or time())
@@ -5961,9 +5494,6 @@ function LFG.queueTimePriority(dungeonCode, nameA, nameB)
     return nameA < nameB
 end
 
--- Returns the name that should lead the CR group for a dungeon.
--- Prefers the earliest queuer (30-second bucket); alphabetical tiebreak within bucket.
--- Uses seenQueueTimes for remote players; queueStartTime for ourselves.
 function LFG.crElectLeader(dungeonCode)
     local candidates = {}
     if LFG.crCandidates[dungeonCode] then
@@ -5971,7 +5501,6 @@ function LFG.crElectLeader(dungeonCode)
             table.insert(candidates, name)
         end
     end
-    -- Always include ourselves if we're a CR seeker for this dungeon
     local selfIncluded = false
     for _, n in ipairs(candidates) do
         if n == me then selfIncluded = true break end
@@ -5986,13 +5515,10 @@ function LFG.crElectLeader(dungeonCode)
     return candidates[1]
 end
 
--- Called when this client wins the election for a dungeon.
--- Sets up LFM broadcast state without touching IsPartyLeader().
 function LFG.crBecomeLeader(dungeonCode)
-    if LFG.crLeader then return end -- already leading
+    if LFG.crLeader then return end
     LFG.crLeader = true
     LFG.LFMDungeonCode = dungeonCode
-    -- Seed the group with ourselves in our own role
     if not LFG.group[dungeonCode] then
         LFG.group[dungeonCode] = { tank = '', healer = '', damage1 = '', damage2 = '', damage3 = '' }
     end
@@ -6011,23 +5537,18 @@ function LFG.crBecomeLeader(dungeonCode)
     LFG.sendLFMStats(dungeonCode)
 end
 
--- Called when we see an LFM from someone who should be leader instead of us.
--- Steps down from CR leadership gracefully.
 function LFG.crStepDown(dungeonCode, newLeaderName)
     if not LFG.crLeader then return end
     lfdebug('crStepDown: ' .. newLeaderName .. ' takes over for ' .. dungeonCode)
     lfprint('[LFG] Class Run: ' .. newLeaderName .. ' is now leading. Switching to applicant mode.')
     LFG.crLeader = false
     LFG.LFMDungeonCode = ''
-    -- Clear our group table so we re-enter as an applicant
     LFG.group[dungeonCode] = { tank = '', healer = '', damage1 = '', damage2 = '', damage3 = '' }
     if string.find(LFG_ROLE, 'tank', 1, true) then
         LFG.group[dungeonCode].tank = me
     end
 end
 
--- Run on the spam timer. Checks whether election conditions are met for each
--- queued CR dungeon and self-elects if appropriate.
 function LFG.crCheckElection()
     local anyClassRun = false
     for _, data in next, LFG.dungeons do
@@ -6044,23 +5565,18 @@ function LFG.crCheckElection()
             local elected = LFG.crElectLeader(code)
 
             if elected == me then
-                -- Start the election clock if not already started
                 if not LFG.crElectionTime[code] then
                     LFG.crElectionTime[code] = time()
                     lfdebug('crCheckElection: starting election clock for ' .. code)
                 end
-                -- Self-elect once the wait period has passed with no natural LFM
                 local waited = time() - LFG.crElectionTime[code]
                 if waited >= LFG.CR_ELECTION_WAIT and not LFG.crLeader then
                     LFG.crBecomeLeader(code)
                 end
             else
-                -- Someone else should be leader; reset our clock
                 LFG.crElectionTime[code] = nil
             end
 
-            -- Leader timeout: if we're leader and haven't sent LFM recently,
-            -- or if elected leader went silent, re-run election
             if LFG.crLeader and LFG.LFMDungeonCode == code then
                 if LFG.crLastLFMTime and (time() - LFG.crLastLFMTime) > LFG.CR_LEADER_TIMEOUT then
                     lfdebug('crCheckElection: leader timeout, stepping down for re-election')
@@ -6073,7 +5589,6 @@ function LFG.crCheckElection()
     end
 end
 
--- Returns true if the given class is already slotted in the group for this dungeon.
 function LFG.classConflictsInGroup(dungeonCode, class)
     local g = LFG.group[dungeonCode]
     if not g then return false end
@@ -6081,11 +5596,7 @@ function LFG.classConflictsInGroup(dungeonCode, class)
 
     for _, name in ipairs(slots) do
         if name and name ~= '' then
-            -- For players already in party, UnitClass works directly
             local knownClass = LFG.playerClass(name)
-            -- For players slotted but not yet in party, fall back to seenClasses
-            -- (populated from their LFG: broadcast class field, protocol v2+)
-            -- seenClasses entries are now {class=..., cr=...} tables
             if knownClass == 'priest' and
                LFG.seenClasses[dungeonCode] and
                LFG.seenClasses[dungeonCode][name] then
@@ -6123,69 +5634,4 @@ function LFG.ver(ver)
 end
 
 function LFG.ucFirst(a)
-    return string.upper(string.sub(a, 1, 1)) .. string.lower(string.sub(a, 2, string.len(a)))
-end
-
-function StringSplit(str, delimiter)
-    local result = {}
-    local from = 1
-    local delim_from, delim_to = string.find(str, delimiter, from)
-    while delim_from do
-        table.insert(result, string.sub(str, from, delim_from - 1))
-        from = delim_to + 1
-        delim_from, delim_to = string.find(str, delimiter, from)
-    end
-    table.insert(result, string.sub(str, from))
-    return result
-end
-
-local channelMonitorFrame = CreateFrame("Frame")
-channelMonitorFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
-channelMonitorFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE_USER")
-channelMonitorFrame:SetScript("OnEvent", function()
-    if event == "CHAT_MSG_CHANNEL_NOTICE" then
-        if arg1 == "YOU_JOINED" and arg9 == LFG.channel then
-            local channelIndex = arg8
-            if channelIndex == 1 then
-                -- Only fix if General channel is not in slot 1
-                local generalIndex = GetChannelName("General")
-                if generalIndex ~= 1 then
-                    lfprint('LFG joined in channel 1! Auto-fixing...')
-                    LFG.fixChannelConflict()
-                else
-                    lfdebug('LFG joined in slot 1 but General is also in slot 1, accepting this state')
-                    LFG.channelIndex = channelIndex
-                end
-            else
-                LFG.channelIndex = channelIndex
-                lfdebug('LFG properly joined in channel: ' .. channelIndex)
-            end
-        elseif arg1 == "YOU_LEFT" and arg9 == LFG.channel then
-            LFG.channelIndex = 0
-            lfdebug('YOU_LEFT LFG channel: channelIndex reset to 0')
-        end
-    elseif event == "CHAT_MSG_CHANNEL_NOTICE_USER" then
-        if LFG.channelIndex > 0 then
-            local checkFrame = CreateFrame("Frame")
-            checkFrame.elapsed = 0
-            checkFrame:SetScript("OnUpdate", function(self, elapsed)
-                self.elapsed = self.elapsed + elapsed
-                if self.elapsed >= 0.5 then
-                    local currentIndex = GetChannelName(LFG.channel)
-                    if currentIndex == 1 and LFG.channelIndex ~= 1 then
-                        -- Only fix if General channel is not in slot 1
-                        local generalIndex = GetChannelName("General")
-                        if generalIndex ~= 1 then
-                            lfprint('Channel conflict detected! Fixing...')
-                            LFG.fixChannelConflict()
-                        else
-                            lfdebug('LFG moved to slot 1 but General is also in slot 1, accepting this state')
-                            LFG.channelIndex = currentIndex
-                        end
-                    end
-                    self:SetScript("OnUpdate", nil)
-                end
-            end)
-        end
-    end
-end)
+    return string.upper(string.sub(a,I seem to be encountering an error. Can I try something else for you?
