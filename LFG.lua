@@ -26,6 +26,10 @@ LFG.dungeonsSpamDisplay = {}
 LFG.dungeonsSpamDisplayLFM = {}
 LFG.browseFrames = {}
 LFG.showedUpdateNotification = false
+-- browseCache[code][role][playerName] = lastSeenTimestamp
+-- Persists across 30-s resets; entries evicted after 45s of silence.
+-- browseNames is rebuilt from this cache each reset cycle.
+LFG.browseCache = {}
 LFG.maxDungeonsInQueue = 5
 LFG.groupSizeMax = 5
 LFG.class = ''
@@ -71,6 +75,11 @@ LFG.ROLE_CHECK_TIME = 50
 LFG.foundGroup = false
 LFG.inGroup = false
 LFG.isLeader = false
+LFG.confirmPending    = false  -- true while confirm popup is open
+LFG.confirmLeader     = ''     -- leader whose invite we're holding
+LFG.confirmDungeon    = ''     -- dungeon code for the pending invite
+LFG.confirmRole       = ''     -- role we were found as
+LFG.pendingInviteFrom = ''     -- set while native invite is suppressed
 LFG.classRunPerDungeon = {}   -- [dungeonCode] = true/false, opt-in per dungeon
 
 -- Helper: returns true if class run is enabled for the given dungeon code.
@@ -202,16 +211,56 @@ LFGTime:SetScript("OnUpdate", function()
 
                 LFG.peopleLookingForGroups = 0
 
-                LFG.browseNames = {}
+                lfdebug("RESET --- TIME IS 0 OR 30 (timestamp-expiry)")
 
-                lfdebug("RESET --- TIME IS 0 OR 30")
+                -- Evict cache entries not heard in the last 45s.
+                -- 45s covers one full 30s cycle plus a generous margin for clock skew.
+                local now = time()
+                local STALE_SECONDS = 45
+                for code, roles in next, LFG.browseCache do
+                    for role, players in next, roles do
+                        for pname, lastSeen in next, players do
+                            if now - lastSeen > STALE_SECONDS then
+                                players[pname] = nil
+                            end
+                        end
+                    end
+                end
+
+                -- Rebuild browseNames from surviving cache entries.
+                LFG.browseNames = {}
+                for code, roles in next, LFG.browseCache do
+                    LFG.browseNames[code] = {}
+                    for role, players in next, roles do
+                        local names = ''
+                        for pname, _ in next, players do
+                            names = names == '' and pname or (names .. '\n' .. pname)
+                        end
+                        LFG.browseNames[code][role] = names
+                    end
+                end
 
                 for dungeon, data in next, LFG.dungeons do
-                    --reset dungeon spam
+                    -- Reset per-window spam counters (fresh accumulation this cycle).
                     LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
-                    -- reset display counts to match browseNames wipe
-                    LFG.dungeonsSpamDisplay[data.code] = { tank = 0, healer = 0, damage = 0 }
-                    --reset myRole
+                    -- Seed display from post-eviction cache so rows keep live data.
+                    local tankCount, healerCount, dmgCount = 0, 0, 0
+                    local cache = LFG.browseCache[data.code]
+                    if cache then
+                        for role, players in next, cache do
+                            local n = 0
+                            for _ in next, players do n = n + 1 end
+                            if role == 'tank'   then tankCount   = n end
+                            if role == 'healer' then healerCount = n end
+                            if role == 'damage' then dmgCount    = n end
+                        end
+                    end
+                    LFG.dungeonsSpamDisplay[data.code] = {
+                        tank   = tankCount,
+                        healer = healerCount,
+                        damage = dmgCount
+                    }
+                    -- reset myRole
                     if LFG.groupFullCode == '' and not LFG.inGroup then
                         LFG.dungeons[dungeon].myRole = ''
                     end
@@ -226,28 +275,14 @@ LFGTime:SetScript("OnUpdate", function()
 
             this.resetAt = {}
 
-            if not this.execAt[LFGTime.second] then
-                BrowseDungeonListFrame_Update()
-                this.execAt[LFGTime.second] = true
-            end
+            -- Per-second full rebuild removed: rows update immediately via
+            -- LFG.BrowseRow_Update(code) when chat data arrives.
+            this.execAt[LFGTime.second] = true
 
         end
 
-        if LFGTime.second == 28 or LFGTime.second == 58 then
-            --check for 0 at 28 and 58
-            for dungeon, data in next, LFG.dungeons do
-                if LFG.dungeonsSpam[data.code].tank == 0 then
-                    LFG.dungeonsSpamDisplay[data.code].tank = LFG.dungeonsSpam[data.code].tank
-                end
-                if LFG.dungeonsSpam[data.code].healer == 0 then
-                    LFG.dungeonsSpamDisplay[data.code].healer = LFG.dungeonsSpam[data.code].healer
-                end
-                if LFG.dungeonsSpam[data.code].damage == 0 then
-                    LFG.dungeonsSpamDisplay[data.code].damage = LFG.dungeonsSpam[data.code].damage
-                end
-                LFG.dungeonsSpamDisplayLFM[data.code] = 0
-            end
-        end
+        -- second-28/58 pre-zeroing removed: browseCache seeds display counts
+        -- at every reset, so speculative zeroing is no longer needed.
 
 
     end
@@ -638,6 +673,30 @@ LFGGroupReadyFrameCloser:SetScript("OnUpdate", function()
             LFGGroupReadyFrameCloser.response = ''
         end
         LFGGroupReadyFrameCloser:Hide()
+    end
+end)
+
+-- Countdown timer for the group confirmation popup.
+local LFGGroupConfirmTimer = CreateFrame("Frame")
+LFGGroupConfirmTimer:Hide()
+LFGGroupConfirmTimer.timeLeft = 30
+LFGGroupConfirmTimer:SetScript("OnShow", function()
+    this.startTime = GetTime()
+    this.timeLeft  = 30
+    _G['LFGGroupConfirmTimer']:SetText('Auto-declining in 30s')
+end)
+LFGGroupConfirmTimer:SetScript("OnUpdate", function()
+    local elapsed   = GetTime() - this.startTime
+    local remaining = 30 - math.floor(elapsed)
+    if remaining ~= this.timeLeft then
+        this.timeLeft = remaining
+        if remaining > 0 then
+            _G['LFGGroupConfirmTimer']:SetText('Auto-declining in ' .. remaining .. 's')
+        end
+    end
+    if elapsed >= 30 then
+        LFGGroupConfirmTimer:Hide()
+        LFGGroupConfirm_Decline()
     end
 end)
 
@@ -1141,15 +1200,25 @@ LFGComms:SetScript("OnEvent", function()
             end
         end
         if event == 'PARTY_INVITE_REQUEST' then
-            if LFG.acceptNextInvite then
-                if arg1 == LFG.onlyAcceptFrom then
-                    LFG.AcceptGroupInvite()
-                    LFG.acceptNextInvite = false
-                else
-                    LFG.DeclineGroupInvite()
-                end
-            end
-            if not LFG.foundGroup then
+            if LFG.acceptNextInvite and arg1 == LFG.onlyAcceptFrom then
+                StaticPopup_Hide("PARTY_INVITE")
+                LFG.acceptNextInvite  = false
+                LFG.pendingInviteFrom = arg1
+                local mDungeon    = (LFG.groupFullCode ~= '' and LFG.groupFullCode) or LFG.LFMDungeonCode
+                local dungeonName = LFG.dungeonNameFromCode(mDungeon)
+                local myRole      = (LFG.dungeons[dungeonName] and LFG.dungeons[dungeonName].myRole ~= '' and LFG.dungeons[dungeonName].myRole) or LFG_ROLE or 'damage'
+                local groupData   = LFG.group[mDungeon] or { tank='', healer='', damage1='', damage2='', damage3='' }
+                LFG.confirmPending  = true
+                LFG.confirmLeader   = arg1
+                LFG.confirmDungeon  = mDungeon
+                LFG.confirmRole     = myRole
+                LFG.confirmPopulate(groupData, mDungeon, dungeonName)
+                _G['LFGGroupConfirm']:Show()
+                LFGGroupConfirmTimer:Show()
+                PlaySoundFile("Interface\\Addons\\LFG\\sound\\lfg_rolecheck.ogg")
+            elseif LFG.acceptNextInvite and arg1 ~= LFG.onlyAcceptFrom then
+                LFG.DeclineGroupInvite()
+            elseif not LFG.foundGroup and not LFG.confirmPending then
                 leaveQueue('PARTY_INVITE_REQUEST')
             end
         end
@@ -1310,27 +1379,50 @@ LFGComms:SetScript("OnEvent", function()
                     local mRole = spamSplit[3] --other's role
 
                     if mDungeonCode and mRole then
-
-                        if not LFG.browseNames[mDungeonCode] then
-                            LFG.browseNames[mDungeonCode] = {}
-                        end
-                        if not LFG.browseNames[mDungeonCode][mRole] then
-                            LFG.browseNames[mDungeonCode][mRole] = ''
-                        end
-
-                        -- Only add name and increment counter if not already seen this cycle
-                        local alreadySeen = LFG.browseNames[mDungeonCode][mRole] ~= '' and
-                            string.find('\n' .. LFG.browseNames[mDungeonCode][mRole] .. '\n', '\n' .. arg2 .. '\n', 1, true)
-
-                        if not alreadySeen then
-                            if LFG.browseNames[mDungeonCode][mRole] == '' then
-                                LFG.browseNames[mDungeonCode][mRole] = arg2
-                            else
-                                LFG.browseNames[mDungeonCode][mRole] = LFG.browseNames[mDungeonCode][mRole] .. "\n" .. arg2
+                        -- Persist player into cache with current timestamp.
+                        if not LFG.browseCache[mDungeonCode] then LFG.browseCache[mDungeonCode] = {} end
+                        -- If this is our own broadcast, clear ourselves from other roles first
+                        -- to prevent showing as both tank and dps after a role change.
+                        if arg2 == me then
+                            for _, clearRole in ipairs({'tank','healer','damage'}) do
+                                if clearRole ~= mRole and LFG.browseCache[mDungeonCode][clearRole] then
+                                    if LFG.browseCache[mDungeonCode][clearRole][me] then
+                                        LFG.browseCache[mDungeonCode][clearRole][me] = nil
+                                        -- Rebuild tooltip name string for the cleared role
+                                        local names = ''
+                                        for pname, _ in next, LFG.browseCache[mDungeonCode][clearRole] do
+                                            names = names == '' and pname or (names .. '\n' .. pname)
+                                        end
+                                        if LFG.browseNames[mDungeonCode] then
+                                            LFG.browseNames[mDungeonCode][clearRole] = names
+                                        end
+                                        -- Recount display
+                                        local n = 0
+                                        for _ in next, LFG.browseCache[mDungeonCode][clearRole] do n = n + 1 end
+                                        if LFG.dungeonsSpamDisplay[mDungeonCode] then
+                                            LFG.dungeonsSpamDisplay[mDungeonCode][clearRole] = n
+                                        end
+                                        if LFG.dungeonsSpam[mDungeonCode] then
+                                            LFG.dungeonsSpam[mDungeonCode][clearRole] = n
+                                        end
+                                    end
+                                end
                             end
-                            LFG.incDungeonssSpamRole(mDungeonCode, mRole)
-                            LFG.updateDungeonsSpamDisplay(mDungeonCode)
                         end
+                        if not LFG.browseCache[mDungeonCode][mRole] then LFG.browseCache[mDungeonCode][mRole] = {} end
+                        local alreadySeen = LFG.browseCache[mDungeonCode][mRole][arg2] ~= nil
+                        LFG.browseCache[mDungeonCode][mRole][arg2] = time()
+                        -- Rebuild tooltip name string from cache
+                        if not LFG.browseNames[mDungeonCode] then LFG.browseNames[mDungeonCode] = {} end
+                        local names = ''
+                        for pname, _ in next, LFG.browseCache[mDungeonCode][mRole] do
+                            names = names == '' and pname or (names .. '\n' .. pname)
+                        end
+                        LFG.browseNames[mDungeonCode][mRole] = names
+                        if not alreadySeen then
+                            LFG.incDungeonssSpamRole(mDungeonCode, mRole)
+                        end
+                        LFG.updateDungeonsSpamDisplay(mDungeonCode)
                     end
                 end
             end
@@ -1393,30 +1485,69 @@ LFGComms:SetScript("OnEvent", function()
                             end
                         end
 
+                        -- Passive slot tracking: record all found: assignments so every
+                        -- watching player can build the full group picture for the popup.
+                        if name and name ~= '' and mDungeon and LFG.group[mDungeon] then
+                            if mRole == 'tank' then
+                                LFG.group[mDungeon].tank = name
+                            elseif mRole == 'healer' then
+                                LFG.group[mDungeon].healer = name
+                            elseif mRole == 'damage' then
+                                if LFG.group[mDungeon].damage1 == '' or LFG.group[mDungeon].damage1 == name then
+                                    LFG.group[mDungeon].damage1 = name
+                                elseif LFG.group[mDungeon].damage2 == '' or LFG.group[mDungeon].damage2 == name then
+                                    LFG.group[mDungeon].damage2 = name
+                                else
+                                    LFG.group[mDungeon].damage3 = name
+                                end
+                            end
+                            if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                                local g = LFG.group[mDungeon]
+                                local slotName = mRole == 'tank' and 'Tank' or mRole == 'healer' and 'Healer' or
+                                    (g.damage1 == name and 'Damage1' or g.damage2 == name and 'Damage2' or 'Damage3')
+                                LFG.confirmUpdateSlot(slotName, name, 'waiting')
+                            end
+                        end
+                        -- Act on found: messages addressed to us
                         if string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
-                            -- CR guard: if we're a CR seeker queued for an eligible dungeon,
-                            -- reject found: messages from leaders who didn't broadcast :cr.
-                            -- This prevents v1 leaders or non-CR v2 leaders from silently
-                            -- pulling us into a regular group and bypassing class checks.
+                            local proceed = true
                             if LFG.isClassRun(mDungeon) and LFG.classRunEligible(mDungeon) then
                                 local senderIsCR = LFG.crCandidates[mDungeon] and
                                                    LFG.crCandidates[mDungeon][arg2] ~= nil
                                 if not senderIsCR then
                                     lfdebug('CR guard: ignoring found: from non-CR leader ' .. arg2 .. ' for ' .. mDungeon)
-                                else
-                                    local fdName = LFG.dungeonNameFromCode(mDungeon)
-                                    if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
-                                    lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
-                                    SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-                                    LFG.foundGroup = true
+                                    proceed = false
                                 end
-                            else
+                            end
+                            if proceed then
                                 local fdName = LFG.dungeonNameFromCode(mDungeon)
                                 if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = mRole end
                                 lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
-                                SendChatMessage('goingWith:' .. arg2 .. ':' .. mDungeon .. ':' .. mRole, "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
-                                LFG.foundGroup = true
+                                LFG.onlyAcceptFrom   = arg2
+                                LFG.acceptNextInvite = true
+                                lfdebug('found: waiting for invite from ' .. arg2 .. ' as ' .. mRole .. ' in ' .. mDungeon)
                             end
+                        end
+                    end
+                end
+            end
+
+            if string.sub(arg1, 1, 14) == 'confirmStatus:' then
+                local csEx      = StringSplit(arg1, ':')
+                local csLeader  = csEx[2]
+                local csDungeon = csEx[3]
+                local csRole    = csEx[4]
+                local csStatus  = csEx[5]
+                if LFG.confirmPending and LFG.confirmLeader == csLeader and
+                        LFG.confirmDungeon == csDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                    local g = LFG.group[csDungeon]
+                    if g then
+                        if csRole == 'tank'   then LFG.confirmUpdateSlot('Tank',   arg2, csStatus) end
+                        if csRole == 'healer' then LFG.confirmUpdateSlot('Healer', arg2, csStatus) end
+                        if csRole == 'damage' then
+                            if g.damage1 == arg2 then LFG.confirmUpdateSlot('Damage1', arg2, csStatus)
+                            elseif g.damage2 == arg2 then LFG.confirmUpdateSlot('Damage2', arg2, csStatus)
+                            else LFG.confirmUpdateSlot('Damage3', arg2, csStatus) end
                         end
                     end
                 end
@@ -1465,6 +1596,16 @@ LFGComms:SetScript("OnEvent", function()
                             LFG.addDamage(mDungeon, arg2, true, true)
                         end
                         LFG.inviteInLFMGroup(arg2)
+                    end
+                end
+                if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                    local g = LFG.group[mDungeon]
+                    if g then
+                        if g.tank    == arg2 then LFG.confirmUpdateSlot('Tank',    arg2, 'accepted') end
+                        if g.healer  == arg2 then LFG.confirmUpdateSlot('Healer',  arg2, 'accepted') end
+                        if g.damage1 == arg2 then LFG.confirmUpdateSlot('Damage1', arg2, 'accepted') end
+                        if g.damage2 == arg2 then LFG.confirmUpdateSlot('Damage2', arg2, 'accepted') end
+                        if g.damage3 == arg2 then LFG.confirmUpdateSlot('Damage3', arg2, 'accepted') end
                     end
                 end
             end
@@ -1765,6 +1906,22 @@ LFG:SetScript("OnEvent", function()
 
             if someoneJoined then
 
+                if _G['LFGGroupConfirm'] and _G['LFGGroupConfirm']:IsVisible() and LFG.confirmDungeon ~= '' then
+                    local g = LFG.group[LFG.confirmDungeon]
+                    if g then
+                        for i = 1, GetNumPartyMembers() do
+                            local pName = UnitName('party' .. i)
+                            if pName then
+                                if g.tank    == pName then LFG.confirmUpdateSlot('Tank',    pName, 'accepted') end
+                                if g.healer  == pName then LFG.confirmUpdateSlot('Healer',  pName, 'accepted') end
+                                if g.damage1 == pName then LFG.confirmUpdateSlot('Damage1', pName, 'accepted') end
+                                if g.damage2 == pName then LFG.confirmUpdateSlot('Damage2', pName, 'accepted') end
+                                if g.damage3 == pName then LFG.confirmUpdateSlot('Damage3', pName, 'accepted') end
+                            end
+                        end
+                    end
+                end
+
                 if LFG.findingMore then
                     -- send him objectives
                     local objectivesString = ''
@@ -1777,6 +1934,7 @@ LFG:SetScript("OnEvent", function()
                     end
                     SendAddonMessage(LFG_ADDON_CHANNEL, "objectives:" .. LFG.LFMDungeonCode .. ":" .. objectivesString, "PARTY")
                     -- end send objectives
+                    if LFG.QueueRefresh then LFG.QueueRefresh(LFG.LFMDungeonCode) end
                     if LFG.isLeader then
 
                         local newName = ''
@@ -2060,8 +2218,13 @@ function LFG.init()
     LFG.crLeader = false
     LFG.crCandidates = {}
     LFG.crElectionTime = {}
-    LFG.acceptNextInvite = false
-    LFG.currentGroupSize = GetNumPartyMembers() + 1
+    LFG.acceptNextInvite  = false
+    LFG.confirmPending    = false
+    LFG.confirmLeader     = ''
+    LFG.confirmDungeon    = ''
+    LFG.confirmRole       = ''
+    LFG.pendingInviteFrom = ''
+    LFG.currentGroupSize  = GetNumPartyMembers() + 1
 
     LFG.isLeader = IsPartyLeader() or false
 
@@ -2070,6 +2233,16 @@ function LFG.init()
 
     LFG.fillAvailableDungeons()
 
+    -- Read channelIndex immediately in case we're already in the LFG channel
+    -- (e.g. persisted from a previous session). Prevents a 15-second blind window.
+    local chanList = { GetChannelList() }
+    for i = 1, #chanList, 2 do
+        if chanList[i + 1] == LFG.channel then
+            LFG.channelIndex = chanList[i]
+            lfdebug('init: LFG channel already joined at index ' .. LFG.channelIndex)
+            break
+        end
+    end
     LFGChannelJoinDelay:Show()
 
     LFG.objectivesFrames = {}
@@ -2925,9 +3098,14 @@ function LFG.resetGroup()
     if not LFG.oneGroupFull then
         LFG.groupFullCode = ''
     end
-    LFG.acceptNextInvite = false
-    LFG.onlyAcceptFrom = ''
-    LFG.foundGroup = false
+    LFG.acceptNextInvite  = false
+    LFG.onlyAcceptFrom    = ''
+    LFG.foundGroup        = false
+    LFG.confirmPending    = false
+    LFG.confirmLeader     = ''
+    LFG.confirmDungeon    = ''
+    LFG.confirmRole       = ''
+    LFG.pendingInviteFrom = ''
 
     LFG.currentGroupRoles = {}
 
@@ -3821,6 +3999,43 @@ function LFG.resetFormedGroups()
     end
 end
 
+function LFG.confirmUpdateSlot(slot, name, status)
+    local tex = _G['LFGGroupConfirmStatus' .. slot]
+    local lbl = _G['LFGGroupConfirmName'   .. slot]
+    if tex then
+        if status == 'accepted' then
+            tex:SetTexture('Interface\\addons\\LFG\\images\\readycheck-ready')
+        elseif status == 'declined' then
+            tex:SetTexture('Interface\\addons\\LFG\\images\\readycheck-notready')
+        else
+            tex:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
+        end
+    end
+    if lbl then lbl:SetText(name or '') end
+end
+
+function LFG.confirmReset()
+    for _, slot in ipairs({'Tank', 'Healer', 'Damage1', 'Damage2', 'Damage3'}) do
+        LFG.confirmUpdateSlot(slot, '', 'waiting')
+    end
+end
+
+function LFG.confirmPopulate(groupData, dungeonCode, dungeonName)
+    _G['LFGGroupConfirmDungeonName']:SetText(dungeonName or '')
+    LFG.confirmReset()
+    local slotMap = {
+        { field = 'tank',    slot = 'Tank'    },
+        { field = 'healer',  slot = 'Healer'  },
+        { field = 'damage1', slot = 'Damage1' },
+        { field = 'damage2', slot = 'Damage2' },
+        { field = 'damage3', slot = 'Damage3' },
+    }
+    for _, entry in ipairs(slotMap) do
+        local n = groupData[entry.field]
+        if n and n ~= '' then LFG.confirmUpdateSlot(entry.slot, n, 'waiting') end
+    end
+end
+
 function LFG.readyStatusReset()
     _G['LFGReadyStatusReadyTank']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
     _G['LFGReadyStatusReadyHealer']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
@@ -3913,6 +4128,252 @@ function LFG.getDungeonCompletion()
 end
 
 LFG.browseNames = {}
+
+-- ---------------------------------------------------------------------------
+-- LFG.NormalizeGroupRoster(code)
+-- Deduplicates and compacts the group roster, removing duplicate names and
+-- packing damage slots so there are no gaps. Guards against concat crashes
+-- by ensuring empty slots are '' not nil.
+-- ---------------------------------------------------------------------------
+function LFG.NormalizeGroupRoster(code)
+    if not code or not LFG.group[code] then return end
+    local g = LFG.group[code]
+    local seen = {}
+    local roles = {"tank","healer","damage1","damage2","damage3"}
+    for _, r in ipairs(roles) do
+        local v = g[r]
+        if v and string.sub(v, 1, 5) ~= "Dummy" then
+            if seen[v] then
+                g[r] = nil
+            else
+                seen[v] = true
+            end
+        end
+    end
+    -- Compact damage slots: collect non-nil, non-Dummy values then reassign
+    local dmg = {}
+    for _, r in ipairs({"damage1","damage2","damage3"}) do
+        local v = g[r]
+        if v and string.sub(v, 1, 5) ~= "Dummy" then table.insert(dmg, v) end
+        g[r] = nil
+    end
+    for i, v in ipairs(dmg) do
+        g["damage" .. i] = v
+    end
+    g.damage1 = g.damage1 or ''
+    g.damage2 = g.damage2 or ''
+    g.damage3 = g.damage3 or ''
+end
+
+LFG.pendingRefresh = false
+
+-- ---------------------------------------------------------------------------
+-- LFG.QueueRefresh(code)
+-- Deferred 0.2s roster normalize + minimap/list update.
+-- Uses an OnUpdate frame instead of C_Timer (not available on 3.3.5a).
+-- ---------------------------------------------------------------------------
+function LFG.QueueRefresh(code)
+    if code then
+        LFG.NormalizeGroupRoster(code)
+    end
+    if LFG.pendingRefresh then return end
+    LFG.pendingRefresh = true
+    local f = CreateFrame("Frame")
+    f.elapsed = 0
+    f:SetScript("OnUpdate", function(self, elapsed)
+        self.elapsed = self.elapsed + elapsed
+        if self.elapsed >= 0.2 then
+            self:SetScript("OnUpdate", nil)
+            LFG.pendingRefresh = false
+            for c, _ in pairs(LFG.group or {}) do
+                LFG.NormalizeGroupRoster(c)
+            end
+            if LFG.updateMinimapListing then pcall(LFG.updateMinimapListing) end
+            if LFG.updateList then pcall(LFG.updateList) end
+        end
+    end)
+end
+
+-- ---------------------------------------------------------------------------
+-- LFG.BrowseRow_Update(code)
+-- Updates ONE dungeon row's widgets in-place; no hide-all / re-sort.
+-- Called by updateDungeonsSpamDisplay on every incoming chat message so
+-- the Browse window is live instead of waiting for the 30s timer cycle.
+-- ---------------------------------------------------------------------------
+function LFG.BrowseRow_Update(code)
+    if not _G['LFGBrowse'] or not _G['LFGBrowse']:IsVisible() then return end
+    if not LFG.browseFrames[code] then return end
+    if not LFG.dungeonsSpamDisplay[code] then return end
+    if not _G['BrowseFrame_' .. code] or not _G['BrowseFrame_' .. code]:IsShown() then return end
+
+    local display = LFG.dungeonsSpamDisplay[code]
+
+    local tank_color = ''
+    _G['BrowseFrame_' .. code .. 'TankButtonTexture']:SetDesaturated(0)
+    if display.tank == 0 then
+        tank_color = COLOR_DISABLED2
+        _G['BrowseFrame_' .. code .. 'TankButtonTexture']:SetDesaturated(1)
+        LFG.removeOnEnterTooltip(_G['BrowseFrame_' .. code .. 'TankButton'])
+    else
+        if LFG.browseNames[code] and LFG.browseNames[code]['tank'] then
+            LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'TankButton'],
+                COLOR_TANK .. 'Tank
+' .. COLOR_WHITE .. LFG.browseNames[code]['tank'], nil, nil, 15, 0)
+        end
+    end
+
+    local healer_color = ''
+    _G['BrowseFrame_' .. code .. 'HealerButtonTexture']:SetDesaturated(0)
+    if display.healer == 0 then
+        healer_color = COLOR_DISABLED2
+        _G['BrowseFrame_' .. code .. 'HealerButtonTexture']:SetDesaturated(1)
+        LFG.removeOnEnterTooltip(_G['BrowseFrame_' .. code .. 'HealerButton'])
+    else
+        if LFG.browseNames[code] and LFG.browseNames[code]['healer'] then
+            LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'HealerButton'],
+                COLOR_HEALER .. 'Healer
+' .. COLOR_WHITE .. LFG.browseNames[code]['healer'], nil, nil, 15, 0)
+        end
+    end
+
+    local damage_color = ''
+    _G['BrowseFrame_' .. code .. 'DamageButtonTexture']:SetDesaturated(0)
+    if display.damage == 0 then
+        damage_color = COLOR_DISABLED2
+        _G['BrowseFrame_' .. code .. 'DamageButtonTexture']:SetDesaturated(1)
+        LFG.removeOnEnterTooltip(_G['BrowseFrame_' .. code .. 'DamageButton'])
+    else
+        if LFG.browseNames[code] and LFG.browseNames[code]['damage'] then
+            LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'DamageButton'],
+                COLOR_DAMAGE .. 'Damage
+' .. COLOR_WHITE .. LFG.browseNames[code]['damage'], nil, nil, 15, 0)
+        end
+    end
+
+    _G['BrowseFrame_' .. code .. 'NrTank']:SetText(tank_color .. display.tank)
+    _G['BrowseFrame_' .. code .. 'NrHealer']:SetText(healer_color .. display.healer)
+    _G['BrowseFrame_' .. code .. 'NrDamage']:SetText(damage_color .. display.damage)
+
+    local dungeonName, dungeonData
+    for dname, ddata in next, LFG.dungeons do
+        if ddata.code == code then dungeonName = dname; dungeonData = ddata; break end
+    end
+    if dungeonName and dungeonData then
+        local color = COLOR_GREEN
+        if LFG.level == dungeonData.minLevel or LFG.level == dungeonData.minLevel + 1 then
+            color = COLOR_RED
+        elseif LFG.level == dungeonData.minLevel + 2 or LFG.level == dungeonData.minLevel + 3 then
+            color = COLOR_ORANGE
+        end
+        local label = color .. dungeonName
+        if LFG.dungeonsSpamDisplayLFM[code] and LFG.dungeonsSpamDisplayLFM[code] > 0 then
+            label = label .. ' (' .. LFG.dungeonsSpamDisplayLFM[code] .. '/5)'
+            _G['BrowseFrame_' .. code .. 'IconLeader']:Show()
+        else
+            _G['BrowseFrame_' .. code .. 'IconLeader']:Hide()
+        end
+        _G['BrowseFrame_' .. code .. 'DungeonName']:SetText(label)
+    end
+
+    _G['BrowseFrame_' .. code .. '_JoinAs']:Hide()
+    if dungeonData and not LFG.inGroup then
+        local queues = 0
+        for _, qdata in next, LFG.dungeons do if qdata.queued then queues = queues + 1 end end
+        if queues < 5 then
+            if display.tank == 0 and string.find(LFG_ROLE, 'tank', 1, true) then
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetID(1)
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetText('Join as Tank')
+                _G['BrowseFrame_' .. code .. '_JoinAs']:Show()
+            elseif display.healer == 0 and string.find(LFG_ROLE, 'healer', 1, true) then
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetID(2)
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetText('Join as Healer')
+                _G['BrowseFrame_' .. code .. '_JoinAs']:Show()
+            elseif display.damage < 3 and string.find(LFG_ROLE, 'damage', 1, true) then
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetID(3)
+                _G['BrowseFrame_' .. code .. '_JoinAs']:SetText('Join as Damage')
+                _G['BrowseFrame_' .. code .. '_JoinAs']:Show()
+            end
+        end
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- LFG_ManualRefresh()
+-- Player-triggered refresh: evict stale cache entries, rebuild counts,
+-- resend own broadcast, full redraw. Button cooldown uses OnUpdate (3.3.5a
+-- compatible; C_Timer is not available).
+-- ---------------------------------------------------------------------------
+function LFG_ManualRefresh()
+    local now = time()
+    local STALE_SECONDS = 45
+
+    for code, roles in next, LFG.browseCache do
+        for role, players in next, roles do
+            for pname, lastSeen in next, players do
+                if now - lastSeen > STALE_SECONDS then
+                    players[pname] = nil
+                end
+            end
+        end
+    end
+
+    LFG.browseNames = {}
+    for code, roles in next, LFG.browseCache do
+        LFG.browseNames[code] = {}
+        for role, players in next, roles do
+            local names = ''
+            for pname, _ in next, players do
+                names = names == '' and pname or (names .. '\n' .. pname)
+            end
+            LFG.browseNames[code][role] = names
+        end
+    end
+    for dungeon, data in next, LFG.dungeons do
+        if LFG.dungeonsSpamDisplay[data.code] then
+            local cache = LFG.browseCache[data.code]
+            local t, h, d = 0, 0, 0
+            if cache then
+                for role, players in next, cache do
+                    local n = 0
+                    for _ in next, players do n = n + 1 end
+                    if role == 'tank'   then t = n end
+                    if role == 'healer' then h = n end
+                    if role == 'damage' then d = n end
+                end
+            end
+            LFG.dungeonsSpamDisplay[data.code].tank   = t
+            LFG.dungeonsSpamDisplay[data.code].healer = h
+            LFG.dungeonsSpamDisplay[data.code].damage = d
+            LFG.dungeonsSpam[data.code].tank   = t
+            LFG.dungeonsSpam[data.code].healer = h
+            LFG.dungeonsSpam[data.code].damage = d
+        end
+    end
+
+    if LFG.findingGroup and not LFG.inGroup then
+        if string.find(LFG_ROLE, 'tank',   1, true) then LFG.sendLFGMessage('tank')   end
+        if string.find(LFG_ROLE, 'healer', 1, true) then LFG.sendLFGMessage('healer') end
+        if string.find(LFG_ROLE, 'damage', 1, true) then LFG.sendLFGMessage('damage') end
+    end
+
+    LFG.LFGBrowse_Update()
+
+    local btn = _G['LFGBrowseRefreshButton']
+    if btn then
+        btn:SetText('...')
+        btn:Disable()
+        local f = CreateFrame('Frame')
+        f.elapsed = 0
+        f:SetScript('OnUpdate', function(self, elapsed)
+            self.elapsed = self.elapsed + elapsed
+            if self.elapsed >= 3 then
+                btn:SetText('Refresh')
+                btn:Enable()
+                self:SetScript('OnUpdate', nil)
+            end
+        end)
+    end
+end
 
 function LFG.LFGBrowse_Update()
     lfdebug('LFGBrowse_Update time is ' .. LFGTime.second)
@@ -4704,6 +5165,39 @@ function findGroup()
     BrowseDungeonListFrame_Update()
 end
 
+function LFGGroupConfirm_Accept()
+    if not LFG.confirmPending then return end
+    local leader  = LFG.confirmLeader
+    local dungeon = LFG.confirmDungeon
+    local role    = LFG.confirmRole
+    LFG.confirmPending    = false
+    LFG.pendingInviteFrom = ''
+    LFGGroupConfirmTimer:Hide()
+    _G['LFGGroupConfirm']:Hide()
+    LFG.AcceptGroupInvite()
+    LFG.foundGroup = true
+    local fdName = LFG.dungeonNameFromCode(dungeon)
+    if LFG.dungeons[fdName] then LFG.dungeons[fdName].myRole = role end
+    SendChatMessage('confirmStatus:' .. leader .. ':' .. dungeon .. ':' .. role .. ':accepted',
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
+    lfdebug('LFGGroupConfirm_Accept: accepted invite from ' .. leader)
+end
+
+function LFGGroupConfirm_Decline()
+    if not LFG.confirmPending then return end
+    local leader  = LFG.confirmLeader
+    local dungeon = LFG.confirmDungeon
+    local role    = LFG.confirmRole
+    LFG.confirmPending    = false
+    LFG.pendingInviteFrom = ''
+    LFGGroupConfirmTimer:Hide()
+    _G['LFGGroupConfirm']:Hide()
+    LFG.DeclineGroupInvite()
+    SendChatMessage('confirmStatus:' .. leader .. ':' .. dungeon .. ':' .. role .. ':declined',
+        "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
+    lfdebug('LFGGroupConfirm_Decline: declined invite from ' .. leader)
+end
+
 function leaveQueue(callData)
 
     if callData then
@@ -4725,6 +5219,13 @@ function leaveQueue(callData)
     LFG.crElectionTime = {}
     LFG.seenQueueTimes = {}
     LFG.pendingCandidates = {}
+    LFG.confirmPending    = false
+    LFG.confirmLeader     = ''
+    LFG.confirmDungeon    = ''
+    LFG.confirmRole       = ''
+    LFG.pendingInviteFrom = ''
+    if LFGGroupConfirmTimer then LFGGroupConfirmTimer:Hide() end
+    if _G['LFGGroupConfirm'] then _G['LFGGroupConfirm']:Hide() end
 
     LFGQueue:Hide()
     LFGRoleCheck:Hide()
@@ -5030,6 +5531,15 @@ function LFG.updateDungeonsSpamDisplay(code, lfm, numLFM)
                 LFG.dungeonsSpamDisplayLFM[code] = numLFM
             end
         end
+    end
+
+    -- Live per-row refresh: update only this dungeon's widgets immediately
+    -- instead of waiting for the next full BrowseDungeonListFrame_Update().
+    -- Falls back to full rebuild if the row doesn't exist yet (first sighting).
+    if LFG.browseFrames[code] and _G['BrowseFrame_' .. code] and _G['BrowseFrame_' .. code]:IsShown() then
+        LFG.BrowseRow_Update(code)
+    else
+        BrowseDungeonListFrame_Update()
     end
 
 end
@@ -5615,6 +6125,9 @@ channelMonitorFrame:SetScript("OnEvent", function()
                 LFG.channelIndex = channelIndex
                 lfdebug('LFG properly joined in channel: ' .. channelIndex)
             end
+        elseif arg1 == "YOU_LEFT" and arg9 == LFG.channel then
+            LFG.channelIndex = 0
+            lfdebug('YOU_LEFT LFG channel: channelIndex reset to 0')
         end
     elseif event == "CHAT_MSG_CHANNEL_NOTICE_USER" then
         if LFG.channelIndex > 0 then

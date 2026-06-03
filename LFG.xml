@@ -2415,6 +2415,25 @@
                         </Scripts>
                     </Button>
 
+                    <!-- Refresh button: evicts stale cache entries and resends own broadcast -->
+                    <Button name="LFGBrowseRefreshButton" inherits="UIPanelButtonTemplate" text="Refresh">
+                        <Size>
+                            <AbsDimension x="80" y="22"/>
+                        </Size>
+                        <Anchors>
+                            <Anchor point="BOTTOMRIGHT">
+                                <Offset>
+                                    <AbsDimension x="-37" y="83"/>
+                                </Offset>
+                            </Anchor>
+                        </Anchors>
+                        <Scripts>
+                            <OnClick>
+                                LFG_ManualRefresh()
+                            </OnClick>
+                        </Scripts>
+                    </Button>
+
                     <Button name="LFGBrowseCloseButton" inherits="UIPanelCloseButton">
                         <Anchors>
                             <Anchor point="TOPRIGHT">
@@ -2605,4 +2624,108 @@
         </Frames>
 
     </Frame>
+
+    <!-- LFGGroupConfirm: group confirmation popup. 420px wide to fit all 5 role slots. -->
+    <Frame name="LFGGroupConfirm" hidden="true" parent="UIParent" enableMouse="true">
+        <Size><AbsDimension x="420" y="210"/></Size>
+        <Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-150"/></Offset></Anchor></Anchors>
+        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background" edgeFile="Interface\DialogFrame\UI-DialogBox-Border" tile="false">
+            <BackgroundInsets><AbsInset left="11" right="12" top="12" bottom="11"/></BackgroundInsets>
+            <TileSize><AbsValue val="32"/></TileSize>
+            <EdgeSize><AbsValue val="32"/></EdgeSize>
+        </Backdrop>
+        <Layers>
+            <Layer level="OVERLAY">
+                <FontString name="$parentTitle" inherits="GameFontWhite" text="Group Found!">
+                    <Size><AbsDimension x="380" y="24"/></Size>
+                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-10"/></Offset></Anchor></Anchors>
+                </FontString>
+                <FontString name="$parentDungeonName" inherits="GameFontNormalLarge" text="">
+                    <Size><AbsDimension x="380" y="24"/></Size>
+                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-30"/></Offset></Anchor></Anchors>
+                </FontString>
+                <FontString name="$parentTimer" inherits="GameFontHighlight" text="Auto-declining in 30s">
+                    <Size><AbsDimension x="380" y="16"/></Size>
+                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="0" y="-52"/></Offset></Anchor></Anchors>
+                </FontString>
+                <Texture name="$parentIconTank" file="Interface\addons\LFG\images\tank2">
+                    <Size><AbsDimension x="40" y="40"/></Size>
+                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="28" y="-76"/></Offset></Anchor></Anchors>
+                </Texture>
+                <Texture name="$parentStatusTank" file="Interface\addons\LFG\images\readycheck-waiting">
+                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconTank" relativePoint="TOPRIGHT"><Offset><AbsDimension x="-8" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <FontString name="$parentNameTank" inherits="GameFontHighlightSmall" text="" justifyH="CENTER">
+                    <Size><AbsDimension x="56" y="16"/></Size>
+                    <Anchors><Anchor point="TOP" relativeTo="LFGGroupConfirmIconTank" relativePoint="BOTTOM"><Offset><AbsDimension x="0" y="-2"/></Offset></Anchor></Anchors>
+                </FontString>
+                <Texture name="$parentIconHealer" file="Interface\addons\LFG\images\healer2">
+                    <Size><AbsDimension x="40" y="40"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconTank" relativePoint="TOPRIGHT"><Offset><AbsDimension x="24" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <Texture name="$parentStatusHealer" file="Interface\addons\LFG\images\readycheck-waiting">
+                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconHealer" relativePoint="TOPRIGHT"><Offset><AbsDimension x="-8" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <FontString name="$parentNameHealer" inherits="GameFontHighlightSmall" text="" justifyH="CENTER">
+                    <Size><AbsDimension x="56" y="16"/></Size>
+                    <Anchors><Anchor point="TOP" relativeTo="LFGGroupConfirmIconHealer" relativePoint="BOTTOM"><Offset><AbsDimension x="0" y="-2"/></Offset></Anchor></Anchors>
+                </FontString>
+                <Texture name="$parentIconDamage1" file="Interface\addons\LFG\images\damage2">
+                    <Size><AbsDimension x="40" y="40"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconHealer" relativePoint="TOPRIGHT"><Offset><AbsDimension x="24" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <Texture name="$parentStatusDamage1" file="Interface\addons\LFG\images\readycheck-waiting">
+                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconDamage1" relativePoint="TOPRIGHT"><Offset><AbsDimension x="-8" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <FontString name="$parentNameDamage1" inherits="GameFontHighlightSmall" text="" justifyH="CENTER">
+                    <Size><AbsDimension x="56" y="16"/></Size>
+                    <Anchors><Anchor point="TOP" relativeTo="LFGGroupConfirmIconDamage1" relativePoint="BOTTOM"><Offset><AbsDimension x="0" y="-2"/></Offset></Anchor></Anchors>
+                </FontString>
+                <Texture name="$parentIconDamage2" file="Interface\addons\LFG\images\damage2">
+                    <Size><AbsDimension x="40" y="40"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconDamage1" relativePoint="TOPRIGHT"><Offset><AbsDimension x="24" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <Texture name="$parentStatusDamage2" file="Interface\addons\LFG\images\readycheck-waiting">
+                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconDamage2" relativePoint="TOPRIGHT"><Offset><AbsDimension x="-8" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <FontString name="$parentNameDamage2" inherits="GameFontHighlightSmall" text="" justifyH="CENTER">
+                    <Size><AbsDimension x="56" y="16"/></Size>
+                    <Anchors><Anchor point="TOP" relativeTo="LFGGroupConfirmIconDamage2" relativePoint="BOTTOM"><Offset><AbsDimension x="0" y="-2"/></Offset></Anchor></Anchors>
+                </FontString>
+                <Texture name="$parentIconDamage3" file="Interface\addons\LFG\images\damage2">
+                    <Size><AbsDimension x="40" y="40"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconDamage2" relativePoint="TOPRIGHT"><Offset><AbsDimension x="24" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <Texture name="$parentStatusDamage3" file="Interface\addons\LFG\images\readycheck-waiting">
+                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Anchors><Anchor point="TOPLEFT" relativeTo="LFGGroupConfirmIconDamage3" relativePoint="TOPRIGHT"><Offset><AbsDimension x="-8" y="0"/></Offset></Anchor></Anchors>
+                </Texture>
+                <FontString name="$parentNameDamage3" inherits="GameFontHighlightSmall" text="" justifyH="CENTER">
+                    <Size><AbsDimension x="56" y="16"/></Size>
+                    <Anchors><Anchor point="TOP" relativeTo="LFGGroupConfirmIconDamage3" relativePoint="BOTTOM"><Offset><AbsDimension x="0" y="-2"/></Offset></Anchor></Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            <Button name="$parentAccept" inherits="UIPanelButtonTemplate" text="Accept">
+                <Size><AbsDimension x="120" y="40"/></Size>
+                <Anchors><Anchor point="BOTTOMLEFT"><Offset><AbsDimension x="25" y="15"/></Offset></Anchor></Anchors>
+                <Scripts><OnClick>LFGGroupConfirm_Accept()</OnClick></Scripts>
+            </Button>
+            <Button name="$parentDecline" inherits="UIPanelButtonTemplate" text="Decline">
+                <Size><AbsDimension x="120" y="40"/></Size>
+                <Anchors><Anchor point="BOTTOMRIGHT"><Offset><AbsDimension x="-25" y="15"/></Offset></Anchor></Anchors>
+                <Scripts><OnClick>LFGGroupConfirm_Decline()</OnClick></Scripts>
+            </Button>
+            <Button inherits="UIPanelCloseButton">
+                <Anchors><Anchor point="TOPRIGHT"><Offset><AbsDimension x="0" y="0"/></Offset></Anchor></Anchors>
+                <Scripts><OnClick>LFGGroupConfirm_Decline()</OnClick></Scripts>
+            </Button>
+        </Frames>
+    </Frame>
+
 </Ui>
