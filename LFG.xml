@@ -747,7 +747,8 @@
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="22" y="-150"/></Offset></Anchor></Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusTank" file="Interfaceddons\LFG\imageseadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusTank" file="Interfaceddons\LFG\images
+eadycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="TOPRIGHT">
@@ -765,7 +766,8 @@
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusHealer" file="Interfaceddons\LFG\imageseadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusHealer" file="Interfaceddons\LFG\images
+eadycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="TOPRIGHT">
@@ -783,7 +785,8 @@
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage1" file="Interfaceddons\LFG\imageseadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage1" file="Interfaceddons\LFG\images
+eadycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="TOPRIGHT">
@@ -801,7 +804,8 @@
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage2" file="Interfaceddons\LFG\imageseadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage2" file="Interfaceddons\LFG\images
+eadycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="TOPRIGHT">
@@ -819,7 +823,8 @@
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage3" file="Interfaceddons\LFG\imageseadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage3" file="Interfaceddons\LFG\images
+eadycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage3" relativePoint="TOPRIGHT">
@@ -2513,7 +2518,7 @@
                     <!-- Refresh button: evicts stale cache entries and resends own broadcast -->
                     <Button name="LFGBrowseRefreshButton" inherits="UIPanelButtonTemplate" text="Refresh">
                         <Size>
-                            <AbsDimension x="80" y="22"/>
+                            <AbsDimension x="100" y="14"/>
                         </Size>
                         <Anchors>
                             <Anchor point="BOTTOMRIGHT">
