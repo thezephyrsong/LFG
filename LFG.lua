@@ -4217,8 +4217,7 @@ function LFG.BrowseRow_Update(code)
     else
         if LFG.browseNames[code] and LFG.browseNames[code]['tank'] then
             LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'TankButton'],
-                COLOR_TANK .. 'Tank
-' .. COLOR_WHITE .. LFG.browseNames[code]['tank'], nil, nil, 15, 0)
+                COLOR_TANK .. 'Tank\n' .. COLOR_WHITE .. LFG.browseNames[code]['tank'], nil, nil, 15, 0)
         end
     end
 
@@ -4231,8 +4230,7 @@ function LFG.BrowseRow_Update(code)
     else
         if LFG.browseNames[code] and LFG.browseNames[code]['healer'] then
             LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'HealerButton'],
-                COLOR_HEALER .. 'Healer
-' .. COLOR_WHITE .. LFG.browseNames[code]['healer'], nil, nil, 15, 0)
+                COLOR_HEALER .. 'Healer\n' .. COLOR_WHITE .. LFG.browseNames[code]['healer'], nil, nil, 15, 0)
         end
     end
 
@@ -4245,8 +4243,7 @@ function LFG.BrowseRow_Update(code)
     else
         if LFG.browseNames[code] and LFG.browseNames[code]['damage'] then
             LFG.addOnEnterTooltip(_G['BrowseFrame_' .. code .. 'DamageButton'],
-                COLOR_DAMAGE .. 'Damage
-' .. COLOR_WHITE .. LFG.browseNames[code]['damage'], nil, nil, 15, 0)
+                COLOR_DAMAGE .. 'Damage\n' .. COLOR_WHITE .. LFG.browseNames[code]['damage'], nil, nil, 15, 0)
         end
     end
 
