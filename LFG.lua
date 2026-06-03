@@ -683,7 +683,7 @@ LFGGroupConfirmTimer.timeLeft = 30
 LFGGroupConfirmTimer:SetScript("OnShow", function()
     this.startTime = GetTime()
     this.timeLeft  = 30
-    _G['LFGGroupConfirmTimer']:SetText('Auto-declining in 30s')
+    _G['LFGGroupReadyConfirmTimer']:SetText('Auto-declining in 30s')
 end)
 LFGGroupConfirmTimer:SetScript("OnUpdate", function()
     local elapsed   = GetTime() - this.startTime
@@ -691,12 +691,13 @@ LFGGroupConfirmTimer:SetScript("OnUpdate", function()
     if remaining ~= this.timeLeft then
         this.timeLeft = remaining
         if remaining > 0 then
-            _G['LFGGroupConfirmTimer']:SetText('Auto-declining in ' .. remaining .. 's')
+            _G['LFGGroupReadyConfirmTimer']:SetText('Auto-declining in ' .. remaining .. 's')
         end
     end
     if elapsed >= 30 then
         LFGGroupConfirmTimer:Hide()
         LFGGroupConfirm_Decline()
+        _G['LFGGroupReadyConfirmTimer']:SetText('')
     end
 end)
 
@@ -1213,7 +1214,22 @@ LFGComms:SetScript("OnEvent", function()
                 LFG.confirmDungeon  = mDungeon
                 LFG.confirmRole     = myRole
                 LFG.confirmPopulate(groupData, mDungeon, dungeonName)
-                _G['LFGGroupConfirm']:Show()
+                -- Show confirm mode: reveal role slots + timer, relabel buttons
+                local confirmSlots = {'ConfirmIconTank','ConfirmStatusTank',
+                    'ConfirmIconHealer','ConfirmStatusHealer',
+                    'ConfirmIconDamage1','ConfirmStatusDamage1',
+                    'ConfirmIconDamage2','ConfirmStatusDamage2',
+                    'ConfirmIconDamage3','ConfirmStatusDamage3',
+                    'ConfirmTimer'}
+                for _, n in ipairs(confirmSlots) do
+                    local w = _G['LFGGroupReady' .. n]
+                    if w then w:Show() end
+                end
+                _G['LFGGroupReadyAwesome']:SetText('Accept')
+                _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+                _G['LFGGroupReadyNotCool']:SetText('Decline')
+                _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
+                _G['LFGGroupReady']:Show()
                 LFGGroupConfirmTimer:Show()
                 PlaySoundFile("Interface\\Addons\\LFG\\sound\\lfg_rolecheck.ogg")
             elseif LFG.acceptNextInvite and arg1 ~= LFG.onlyAcceptFrom then
@@ -1501,7 +1517,7 @@ LFGComms:SetScript("OnEvent", function()
                                     LFG.group[mDungeon].damage3 = name
                                 end
                             end
-                            if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                            if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupReady']:IsVisible() and LFG.confirmPending then
                                 local g = LFG.group[mDungeon]
                                 local slotName = mRole == 'tank' and 'Tank' or mRole == 'healer' and 'Healer' or
                                     (g.damage1 == name and 'Damage1' or g.damage2 == name and 'Damage2' or 'Damage3')
@@ -1539,7 +1555,7 @@ LFGComms:SetScript("OnEvent", function()
                 local csRole    = csEx[4]
                 local csStatus  = csEx[5]
                 if LFG.confirmPending and LFG.confirmLeader == csLeader and
-                        LFG.confirmDungeon == csDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                        LFG.confirmDungeon == csDungeon and _G['LFGGroupReady']:IsVisible() and LFG.confirmPending then
                     local g = LFG.group[csDungeon]
                     if g then
                         if csRole == 'tank'   then LFG.confirmUpdateSlot('Tank',   arg2, csStatus) end
@@ -1598,7 +1614,7 @@ LFGComms:SetScript("OnEvent", function()
                         LFG.inviteInLFMGroup(arg2)
                     end
                 end
-                if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupConfirm']:IsVisible() then
+                if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupReady']:IsVisible() and LFG.confirmPending then
                     local g = LFG.group[mDungeon]
                     if g then
                         if g.tank    == arg2 then LFG.confirmUpdateSlot('Tank',    arg2, 'accepted') end
@@ -1906,7 +1922,7 @@ LFG:SetScript("OnEvent", function()
 
             if someoneJoined then
 
-                if _G['LFGGroupConfirm'] and _G['LFGGroupConfirm']:IsVisible() and LFG.confirmDungeon ~= '' then
+                if _G['LFGGroupReady']:IsVisible() and LFG.confirmPending and LFG.confirmDungeon ~= '' then
                     local g = LFG.group[LFG.confirmDungeon]
                     if g then
                         for i = 1, GetNumPartyMembers() do
@@ -4000,8 +4016,9 @@ function LFG.resetFormedGroups()
 end
 
 function LFG.confirmUpdateSlot(slot, name, status)
-    local tex = _G['LFGGroupConfirmStatus' .. slot]
-    local lbl = _G['LFGGroupConfirmName'   .. slot]
+    -- Slot names: 'Tank','Healer','Damage1','Damage2','Damage3'
+    -- Widgets live inside LFGGroupReady with prefix 'Confirm'
+    local tex = _G['LFGGroupReadyConfirmStatus' .. slot]
     if tex then
         if status == 'accepted' then
             tex:SetTexture('Interface\\addons\\LFG\\images\\readycheck-ready')
@@ -4011,7 +4028,6 @@ function LFG.confirmUpdateSlot(slot, name, status)
             tex:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
         end
     end
-    if lbl then lbl:SetText(name or '') end
 end
 
 function LFG.confirmReset()
@@ -4021,7 +4037,8 @@ function LFG.confirmReset()
 end
 
 function LFG.confirmPopulate(groupData, dungeonCode, dungeonName)
-    _G['LFGGroupConfirmDungeonName']:SetText(dungeonName or '')
+    -- DungeonName is already set by the party:ready handler via LFGGroupReadyDungeonName;
+    -- confirmPopulate just resets the slot icons.
     LFG.confirmReset()
     local slotMap = {
         { field = 'tank',    slot = 'Tank'    },
@@ -5162,6 +5179,25 @@ function findGroup()
     BrowseDungeonListFrame_Update()
 end
 
+function LFG.hideConfirmMode()
+    local confirmSlots = {'ConfirmIconTank','ConfirmStatusTank',
+        'ConfirmIconHealer','ConfirmStatusHealer',
+        'ConfirmIconDamage1','ConfirmStatusDamage1',
+        'ConfirmIconDamage2','ConfirmStatusDamage2',
+        'ConfirmIconDamage3','ConfirmStatusDamage3',
+        'ConfirmTimer'}
+    for _, n in ipairs(confirmSlots) do
+        local w = _G['LFGGroupReady' .. n]
+        if w then w:Hide() end
+    end
+    _G['LFGGroupReadyConfirmTimer']:SetText('')
+    -- Restore original button text/scripts
+    _G['LFGGroupReadyAwesome']:SetText("Let's do this!")
+    _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() sayReady() end)
+    _G['LFGGroupReadyNotCool']:SetText('Leave Queue')
+    _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() sayNotReady() end)
+end
+
 function LFGGroupConfirm_Accept()
     if not LFG.confirmPending then return end
     local leader  = LFG.confirmLeader
@@ -5170,7 +5206,8 @@ function LFGGroupConfirm_Accept()
     LFG.confirmPending    = false
     LFG.pendingInviteFrom = ''
     LFGGroupConfirmTimer:Hide()
-    _G['LFGGroupConfirm']:Hide()
+    LFG.hideConfirmMode()
+    _G['LFGGroupReady']:Hide()
     LFG.AcceptGroupInvite()
     LFG.foundGroup = true
     local fdName = LFG.dungeonNameFromCode(dungeon)
@@ -5188,7 +5225,8 @@ function LFGGroupConfirm_Decline()
     LFG.confirmPending    = false
     LFG.pendingInviteFrom = ''
     LFGGroupConfirmTimer:Hide()
-    _G['LFGGroupConfirm']:Hide()
+    LFG.hideConfirmMode()
+    _G['LFGGroupReady']:Hide()
     LFG.DeclineGroupInvite()
     SendChatMessage('confirmStatus:' .. leader .. ':' .. dungeon .. ':' .. role .. ':declined',
         "CHANNEL", DEFAULT_CHAT_FRAME.editBox.languageID, (GetChannelName(LFG.channel)))
@@ -5222,7 +5260,7 @@ function leaveQueue(callData)
     LFG.confirmRole       = ''
     LFG.pendingInviteFrom = ''
     if LFGGroupConfirmTimer then LFGGroupConfirmTimer:Hide() end
-    if _G['LFGGroupConfirm'] then _G['LFGGroupConfirm']:Hide() end
+    if LFG.hideConfirmMode then LFG.hideConfirmMode() end
 
     LFGQueue:Hide()
     LFGRoleCheck:Hide()
