@@ -743,12 +743,11 @@
 
                 <!-- Role slot icons (confirm mode) -->
                 <!-- Tank -->
-                <Texture name="$parentConfirmIconTank" file="Interfaceddons\LFG\images	ank2" hidden="true">
+                <Texture name="$parentConfirmIconTank" file="Interface\AddOns\LFG\images\tank2" hidden="true">
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="22" y="-150"/></Offset></Anchor></Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusTank" file="Interfaceddons\LFG\images
-eadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusTank" file="Interface\AddOns\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="TOPRIGHT">
@@ -758,7 +757,7 @@ eadycheck-waiting" hidden="true">
                 </Texture>
 
                 <!-- Healer -->
-                <Texture name="$parentConfirmIconHealer" file="Interfaceddons\LFG\images\healer2" hidden="true">
+                <Texture name="$parentConfirmIconHealer" file="Interface\addons\LFG\images\healer2" hidden="true">
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="TOPRIGHT">
@@ -766,8 +765,7 @@ eadycheck-waiting" hidden="true">
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusHealer" file="Interfaceddons\LFG\images
-eadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusHealer" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="TOPRIGHT">
@@ -777,7 +775,7 @@ eadycheck-waiting" hidden="true">
                 </Texture>
 
                 <!-- Damage 1 -->
-                <Texture name="$parentConfirmIconDamage1" file="Interfaceddons\LFG\images\damage2" hidden="true">
+                <Texture name="$parentConfirmIconDamage1" file="Interface\addons\LFG\images\damage2" hidden="true">
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="TOPRIGHT">
@@ -785,8 +783,7 @@ eadycheck-waiting" hidden="true">
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage1" file="Interfaceddons\LFG\images
-eadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage1" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="TOPRIGHT">
@@ -796,7 +793,7 @@ eadycheck-waiting" hidden="true">
                 </Texture>
 
                 <!-- Damage 2 -->
-                <Texture name="$parentConfirmIconDamage2" file="Interfaceddons\LFG\images\damage2" hidden="true">
+                <Texture name="$parentConfirmIconDamage2" file="Interface\addons\LFG\images\damage2" hidden="true">
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="TOPRIGHT">
@@ -804,8 +801,7 @@ eadycheck-waiting" hidden="true">
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage2" file="Interfaceddons\LFG\images
-eadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage2" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="TOPRIGHT">
@@ -815,7 +811,7 @@ eadycheck-waiting" hidden="true">
                 </Texture>
 
                 <!-- Damage 3 -->
-                <Texture name="$parentConfirmIconDamage3" file="Interfaceddons\LFG\images\damage2" hidden="true">
+                <Texture name="$parentConfirmIconDamage3" file="Interface\addons\LFG\images\damage2" hidden="true">
                     <Size><AbsDimension x="36" y="36"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="TOPRIGHT">
@@ -823,8 +819,7 @@ eadycheck-waiting" hidden="true">
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage3" file="Interfaceddons\LFG\images
-eadycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage3" file="Interfaceddons\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage3" relativePoint="TOPRIGHT">
@@ -1204,7 +1199,7 @@ eadycheck-waiting" hidden="true">
                 </Offset>
             </Anchor>
         </Anchors>
-        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Backgrou2nd"
+        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Background"
                   tile="false">
         </Backdrop>
         <Layers>
@@ -1456,7 +1451,7 @@ eadycheck-waiting" hidden="true">
                 </Offset>
             </Anchor>
         </Anchors>
-        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-Backgrou2nd"
+        <Backdrop bgFile="Interface\DialogFrame\UI-DialogBox-background"
                   tile="false">
             <BackgroundInsets>
                 <AbsInset left="11" right="12" top="12" bottom="11"/>
@@ -1895,9 +1890,14 @@ eadycheck-waiting" hidden="true">
                         </Anchors>
                         <Scripts>
                             <OnClick>
-                                if RoleTank:IsEnabled() == 1 then
-                                RoleTank:SetChecked(not RoleTank:GetChecked())
-                                LFGsetRole('tank', RoleTank:GetChecked())
+                                    if roleCheckTank:IsEnabled() then
+                                    if roleCheckTank:GetChecked() then
+                                    roleCheckTank:SetChecked(false)
+                                        LFGsetRole('', true, true)
+                                    else
+                                        roleCheckTank:SetChecked(true)
+                                        LFGsetRole('tank', true, true)
+                                    end
                                 end
                             </OnClick>
                             <OnEnter>
@@ -1928,9 +1928,14 @@ eadycheck-waiting" hidden="true">
                         </Anchors>
                         <Scripts>
                             <OnClick>
-                                if RoleHealer:IsEnabled() == 1 then
-                                RoleHealer:SetChecked(not RoleHealer:GetChecked())
-                                LFGsetRole('healer', RoleHealer:GetChecked())
+                                    if roleCheckHealer:IsEnabled() then
+                                    if roleCheckHealer:GetChecked() then
+                                    roleCheckHealer:SetChecked(false)
+                                        LFGsetRole('', true, true)
+                                    else
+                                        roleCheckHealer:SetChecked(true)
+                                        LFGsetRole('healer', true, true)
+                                    end
                                 end
                             </OnClick>
                             <OnEnter>
@@ -1961,9 +1966,14 @@ eadycheck-waiting" hidden="true">
                         </Anchors>
                         <Scripts>
                             <OnClick>
-                                if RoleDamage:IsEnabled() == 1 then
-                                RoleDamage:SetChecked(not RoleDamage:GetChecked())
-                                LFGsetRole('damage', RoleDamage:GetChecked())
+                                    if roleCheckDamage:IsEnabled() then
+                                    if roleCheckDamage:GetChecked() then
+                                    roleCheckDamage:SetChecked(false)
+                                        LFGsetRole('', true, true)
+                                    else
+                                        roleCheckDamage:SetChecked(true)
+                                        LFGsetRole('damage', true, true)
+                                    end
                                 end
                             </OnClick>
                             <OnEnter>
