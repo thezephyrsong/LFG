@@ -5634,4 +5634,6 @@ function LFG.ver(ver)
 end
 
 function LFG.ucFirst(a)
-    return string.upper(string.sub(a,I seem to be encountering an error. Can I try something else for you?
+    if not a or a == "" then return "" end
+    return string.upper(string.sub(a, 1, 1)) .. string.sub(a, 2)
+end
