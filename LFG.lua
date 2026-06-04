@@ -2485,7 +2485,13 @@ LFGQueue:SetScript("OnUpdate", function()
 
                     LFG.fixMainButton()
                     _G['LFGlfg']:Hide()
-                    LFGInvite:Show()
+                    local awesomeButton = _G['LFGGroupReadyAwesome']
+                    awesomeButton:SetText('Accept Group')
+                    awesomeButton:Enable() -- Make sure it's clickable
+                    awesomeButton:SetScript('OnClick', function()
+                        -- When the leader clicks Accept, start the invitation loop!
+                        LFGInvite:Show() 
+                    end)
                 end
             end
 
