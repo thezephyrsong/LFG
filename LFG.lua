@@ -325,6 +325,22 @@ LFGGoingWithPicker:SetScript("OnUpdate", function()
     end
 end)
 
+-- StringSplit: defined locally because the WoW 3.3.5a client does not expose
+-- this as a global (it existed in 1.12 but was removed in later clients).
+-- Splits str on delimiter and returns a table of substrings.
+function StringSplit(str, delimiter)
+    local result = {}
+    local from = 1
+    local delim_from, delim_to = string.find(str, delimiter, from, true)
+    while delim_from do
+        table.insert(result, string.sub(str, from, delim_from - 1))
+        from = delim_to + 1
+        delim_from, delim_to = string.find(str, delimiter, from, true)
+    end
+    table.insert(result, string.sub(str, from))
+    return result
+end
+
 local COLOR_RED = '|cffff222a'
 local COLOR_ORANGE = '|cffff8000'
 local COLOR_GREEN = '|cff1fba1f'
@@ -5263,6 +5279,83 @@ SlashCmdList["LFG"] = function(cmd)
         end
         if string.sub(cmd, 1, 8) == 'sayguild' then
             LFG.sendAdvertisement("GUILD")
+        end
+
+        -- /lfg testconfirm [role] [dungeon]
+        -- Shows the confirm popup with dummy data so you can test layout.
+        -- Examples:
+        --   /lfg testconfirm
+        --   /lfg testconfirm healer rfc
+        --   /lfg testconfirm tank smcath accepted  (marks tank slot as accepted)
+        if string.sub(cmd, 1, 11) == 'testconfirm' then
+            local args = StringSplit(cmd, ' ')
+            local testRole    = args[2] or 'healer'
+            local testDungeon = args[3] or 'rfc'
+            local testStatus  = args[4] or 'waiting'  -- 'waiting', 'accepted', 'declined'
+
+            -- Seed fake confirm state
+            LFG.confirmPending  = true
+            LFG.confirmLeader   = 'TestLeader'
+            LFG.confirmDungeon  = testDungeon
+            LFG.confirmRole     = testRole
+
+            -- Seed a fake group so confirmPopulate has something to show
+            LFG.group[testDungeon] = {
+                tank    = 'TestTank',
+                healer  = 'TestHealer',
+                damage1 = 'TestDPS1',
+                damage2 = 'TestDPS2',
+                damage3 = 'TestDPS3',
+            }
+
+            -- Populate the dungeon name label and role icon
+            local dungeonName = LFG.dungeonNameFromCode(testDungeon)
+            if dungeonName == 'Unknown' then dungeonName = testDungeon end
+            _G['LFGGroupReadyDungeonName']:SetText(dungeonName)
+            _G['LFGGroupReadyRole']:SetTexture("Interface\\addons\\LFG\\images\\" .. testRole .. "2")
+            _G['LFGGroupReadyMyRole']:SetText(LFG.ucFirst(testRole))
+            _G['LFGGroupReadyObjectivesCompleted']:SetText('0/4 Bosses Defeated')
+
+            -- Show confirm mode
+            local confirmSlots = {
+                'ConfirmIconTank','ConfirmStatusTank',
+                'ConfirmIconHealer','ConfirmStatusHealer',
+                'ConfirmIconDamage1','ConfirmStatusDamage1',
+                'ConfirmIconDamage2','ConfirmStatusDamage2',
+                'ConfirmIconDamage3','ConfirmStatusDamage3',
+                'ConfirmTimer'
+            }
+            for _, n in ipairs(confirmSlots) do
+                local w = _G['LFGGroupReady' .. n]
+                if w then w:Show() end
+            end
+            _G['LFGGroupReadyAwesome']:SetText('Accept')
+            _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+            _G['LFGGroupReadyNotCool']:SetText('Decline')
+            _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
+            _G['LFGGroupReady']:Show()
+            LFGGroupConfirmTimer:Show()
+
+            -- Optionally mark a slot with a test status
+            if testStatus ~= 'waiting' then
+                local slotMap = { tank='Tank', healer='Healer', damage='Damage1' }
+                local slot = slotMap[testRole] or 'Tank'
+                LFG.confirmUpdateSlot(slot, LFG.group[testDungeon][string.lower(slot):gsub('damage%d', 'damage1')] or 'Test', testStatus)
+            end
+
+            lfprint('testconfirm: showing popup as ' .. testRole .. ' for ' .. dungeonName .. ' (status: ' .. testStatus .. ')')
+            lfprint('Click Accept/Decline to test dismissal, or /lfg testconfirm again to re-show.')
+        end
+
+        -- /lfg testslot tank|healer|damage1|damage2|damage3 waiting|accepted|declined
+        -- Updates a single slot status icon on an open confirm popup.
+        if string.sub(cmd, 1, 8) == 'testslot' then
+            local args = StringSplit(cmd, ' ')
+            local slotName = LFG.ucFirst(args[2] or 'tank')
+            local status   = args[3] or 'accepted'
+            local name     = args[4] or 'TestPlayer'
+            LFG.confirmUpdateSlot(slotName, name, status)
+            lfprint('testslot: set ' .. slotName .. ' to ' .. status)
         end
     end
 end

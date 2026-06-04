@@ -582,7 +582,7 @@
 
     <Frame name="LFGGroupReady" hidden="true" parent="UIParent" enableMouse="true">
         <Size>
-            <AbsDimension x="420" y="290"/>
+            <AbsDimension x="308" y="320"/>
         </Size>
         <Anchors>
             <Anchor point="TOP">
@@ -674,7 +674,7 @@
                 </Texture>
                 <FontString name="$parentGroupText" inherits="GameFontWhite" text="A group has been formed for:">
                     <Size>
-                        <AbsDimension x="100" y="44"/>
+                        <AbsDimension x="200" y="44"/>
                     </Size>
                     <Anchors>
                         <Anchor point="TOP">
@@ -735,95 +735,96 @@
 
                 <!-- Countdown timer shown during group confirmation -->
                 <FontString name="$parentConfirmTimer" inherits="GameFontHighlight" text="" hidden="true">
-                    <Size><AbsDimension x="380" y="16"/></Size>
+                    <Size><AbsDimension x="380" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOP"><Offset><AbsDimension x="0" y="-130"/></Offset></Anchor>
+                        <Anchor point="TOP"><Offset><AbsDimension x="0" y="-128"/></Offset></Anchor>
                     </Anchors>
                 </FontString>
 
-                <!-- Role slot icons (confirm mode) -->
-                <!-- Tank -->
+                <!-- Role slot icons (confirm mode): 44px icons centred, evenly spaced -->
+                <!-- Tank: anchor to frame centre, offset left so all 5 icons are centred -->
+                <!-- 5 icons * 44px + 4 gaps * 14px = 220+56 = 276px total; centre offset = -138 -->
                 <Texture name="$parentConfirmIconTank" file="Interface\AddOns\LFG\images\tank2" hidden="true">
-                    <Size><AbsDimension x="36" y="36"/></Size>
-                    <Anchors><Anchor point="TOPLEFT"><Offset><AbsDimension x="22" y="-150"/></Offset></Anchor></Anchors>
+                    <Size><AbsDimension x="44" y="44"/></Size>
+                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="-114" y="-152"/></Offset></Anchor></Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusTank" file="Interface\AddOns\LFG\images\readycheck-waiting" hidden="true">
-                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Size><AbsDimension x="18" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="-6" y="0"/></Offset>
+                        <Anchor point="BOTTOMRIGHT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="6" y="-2"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
 
                 <!-- Healer -->
                 <Texture name="$parentConfirmIconHealer" file="Interface\addons\LFG\images\healer2" hidden="true">
-                    <Size><AbsDimension x="36" y="36"/></Size>
+                    <Size><AbsDimension x="44" y="44"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="22" y="0"/></Offset>
+                        <Anchor point="LEFT" relativeTo="LFGGroupReadyConfirmIconTank" relativePoint="RIGHT">
+                            <Offset><AbsDimension x="14" y="0"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusHealer" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
-                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Size><AbsDimension x="18" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="-6" y="0"/></Offset>
+                        <Anchor point="BOTTOMRIGHT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="6" y="-2"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
 
                 <!-- Damage 1 -->
                 <Texture name="$parentConfirmIconDamage1" file="Interface\addons\LFG\images\damage2" hidden="true">
-                    <Size><AbsDimension x="36" y="36"/></Size>
+                    <Size><AbsDimension x="44" y="44"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="22" y="0"/></Offset>
+                        <Anchor point="LEFT" relativeTo="LFGGroupReadyConfirmIconHealer" relativePoint="RIGHT">
+                            <Offset><AbsDimension x="14" y="0"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusDamage1" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
-                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Size><AbsDimension x="18" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="-6" y="0"/></Offset>
+                        <Anchor point="BOTTOMRIGHT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="6" y="-2"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
 
                 <!-- Damage 2 -->
                 <Texture name="$parentConfirmIconDamage2" file="Interface\addons\LFG\images\damage2" hidden="true">
-                    <Size><AbsDimension x="36" y="36"/></Size>
+                    <Size><AbsDimension x="44" y="44"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="22" y="0"/></Offset>
+                        <Anchor point="LEFT" relativeTo="LFGGroupReadyConfirmIconDamage1" relativePoint="RIGHT">
+                            <Offset><AbsDimension x="14" y="0"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusDamage2" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
-                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Size><AbsDimension x="18" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="-6" y="0"/></Offset>
+                        <Anchor point="BOTTOMRIGHT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="6" y="-2"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
 
                 <!-- Damage 3 -->
                 <Texture name="$parentConfirmIconDamage3" file="Interface\addons\LFG\images\damage2" hidden="true">
-                    <Size><AbsDimension x="36" y="36"/></Size>
+                    <Size><AbsDimension x="44" y="44"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="22" y="0"/></Offset>
+                        <Anchor point="LEFT" relativeTo="LFGGroupReadyConfirmIconDamage2" relativePoint="RIGHT">
+                            <Offset><AbsDimension x="14" y="0"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusDamage3" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
-                    <Size><AbsDimension x="16" y="16"/></Size>
+                    <Size><AbsDimension x="18" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage3" relativePoint="TOPRIGHT">
-                            <Offset><AbsDimension x="-6" y="0"/></Offset>
+                        <Anchor point="BOTTOMRIGHT" relativeTo="LFGGroupReadyConfirmIconDamage3" relativePoint="BOTTOMRIGHT">
+                            <Offset><AbsDimension x="6" y="-2"/></Offset>
                         </Anchor>
                     </Anchors>
                 </Texture>
@@ -2528,12 +2529,12 @@
                     <!-- Refresh button: evicts stale cache entries and resends own broadcast -->
                     <Button name="LFGBrowseRefreshButton" inherits="UIPanelButtonTemplate" text="Refresh">
                         <Size>
-                            <AbsDimension x="100" y="14"/>
+                            <AbsDimension x="102" y="28"/>
                         </Size>
                         <Anchors>
                             <Anchor point="BOTTOMRIGHT">
                                 <Offset>
-                                    <AbsDimension x="-37" y="83"/>
+                                    <AbsDimension x="-37" y="81"/>
                                 </Offset>
                             </Anchor>
                         </Anchors>
