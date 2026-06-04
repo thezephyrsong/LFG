@@ -819,7 +819,7 @@
                         </Anchor>
                     </Anchors>
                 </Texture>
-                <Texture name="$parentConfirmStatusDamage3" file="Interfaceddons\LFG\images\readycheck-waiting" hidden="true">
+                <Texture name="$parentConfirmStatusDamage3" file="Interface\addons\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="16" y="16"/></Size>
                     <Anchors>
                         <Anchor point="TOPLEFT" relativeTo="LFGGroupReadyConfirmIconDamage3" relativePoint="TOPRIGHT">

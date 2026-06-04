@@ -4712,7 +4712,7 @@ function LFG_ShowMinimap()
             if LFG.group[dungeonCode].healer ~= '' or (not LFG.inGroup and string.find(LFG_ROLE, 'healer', 1, true)) then
                 healer = healer + 1
             end
-            if LFG.group[dungeonCode].damage1 ~= '' or (not LFG.inGroup tensors and string.find(LFG_ROLE, 'damage', 1, true)) then
+            if LFG.group[dungeonCode].damage1 ~= '' or (not LFG.inGroup and string.find(LFG_ROLE, 'damage', 1, true)) then
                 damage = damage + 1
             end
             if LFG.group[dungeonCode].damage2 ~= '' then
