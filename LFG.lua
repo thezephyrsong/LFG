@@ -2486,11 +2486,12 @@ LFGQueue:SetScript("OnUpdate", function()
                     LFG.fixMainButton()
                     _G['LFGlfg']:Hide()
                     local awesomeButton = _G['LFGGroupReadyAwesome']
-                    awesomeButton:SetText('Accept Group')
-                    awesomeButton:Enable() -- Make sure it's clickable
+                    awesomeButton:SetText('Send Invites')
+                    awesomeButton:Enable()
                     awesomeButton:SetScript('OnClick', function()
-                        -- When the leader clicks Accept, start the invitation loop!
-                        LFGInvite:Show() 
+                        LFGInvite:Show()
+                        awesomeButton:SetText('Waiting Players (' .. (LFG.groupSizeMax - GetNumPartyMembers() - 1) .. ')')
+                        awesomeButton:Disable()
                     end)
                 end
             end
@@ -5736,3 +5737,52 @@ function LFG.ucFirst(a)
     if not a or a == "" then return "" end
     return string.upper(string.sub(a, 1, 1)) .. string.sub(a, 2)
 end
+
+local channelMonitorFrame = CreateFrame("Frame")
+channelMonitorFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE")
+channelMonitorFrame:RegisterEvent("CHAT_MSG_CHANNEL_NOTICE_USER")
+channelMonitorFrame:SetScript("OnEvent", function()
+    if event == "CHAT_MSG_CHANNEL_NOTICE" then
+        if arg1 == "YOU_JOINED" and arg9 == LFG.channel then
+            local channelIndex = arg8
+            if channelIndex == 1 then
+                local generalIndex = GetChannelName("General")
+                if generalIndex ~= 1 then
+                    lfprint('LFG joined in channel 1! Auto-fixing...')
+                    LFG.fixChannelConflict()
+                else
+                    lfdebug('LFG joined in slot 1 but General is also in slot 1, accepting this state')
+                    LFG.channelIndex = channelIndex
+                end
+            else
+                LFG.channelIndex = channelIndex
+                lfdebug('LFG properly joined in channel: ' .. channelIndex)
+            end
+        elseif arg1 == "YOU_LEFT" and arg9 == LFG.channel then
+            LFG.channelIndex = 0
+            lfdebug('YOU_LEFT LFG channel: channelIndex reset to 0')
+        end
+    elseif event == "CHAT_MSG_CHANNEL_NOTICE_USER" then
+        if LFG.channelIndex > 0 then
+            local checkFrame = CreateFrame("Frame")
+            checkFrame.elapsed = 0
+            checkFrame:SetScript("OnUpdate", function(self, elapsed)
+                self.elapsed = self.elapsed + elapsed
+                if self.elapsed >= 0.5 then
+                    local currentIndex = GetChannelName(LFG.channel)
+                    if currentIndex == 1 and LFG.channelIndex ~= 1 then
+                        local generalIndex = GetChannelName("General")
+                        if generalIndex ~= 1 then
+                            lfprint('Channel conflict detected! Fixing...')
+                            LFG.fixChannelConflict()
+                        else
+                            lfdebug('LFG moved to slot 1 but General is also in slot 1, accepting this state')
+                            LFG.channelIndex = currentIndex
+                        end
+                    end
+                    self:SetScript("OnUpdate", nil)
+                end
+            end)
+        end
+    end
+end)
