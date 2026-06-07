@@ -30,6 +30,9 @@ LFG.showedUpdateNotification = false
 -- Persists across 30-s resets; entries evicted after 45s of silence.
 -- browseNames is rebuilt from this cache each reset cycle.
 LFG.browseCache = {}
+-- browseCacheLFM[code] = { leader=name, tank=n, healer=n, damage=n, timestamp=t }
+-- Tracks the most recently seen LFM broadcast per dungeon for tooltip display.
+LFG.browseCacheLFM = {}
 LFG.maxDungeonsInQueue = 5
 LFG.groupSizeMax = 5
 LFG.class = ''
@@ -224,6 +227,12 @@ LFGTime:SetScript("OnUpdate", function()
                                 players[pname] = nil
                             end
                         end
+                    end
+                end
+                -- Evict stale LFM cache entries
+                for code, entry in next, LFG.browseCacheLFM do
+                    if now - entry.timestamp > STALE_SECONDS then
+                        LFG.browseCacheLFM[code] = nil
                     end
                 end
 
@@ -1461,6 +1470,45 @@ LFGComms:SetScript("OnEvent", function()
                     LFG.incDungeonssSpamRole(mDungeonCode, 'healer', lfmHealer)
                     LFG.incDungeonssSpamRole(mDungeonCode, 'damage', lfmDamage)
                     LFG.updateDungeonsSpamDisplay(mDungeonCode, true, lfmTank + lfmHealer + lfmDamage)
+
+                    -- Store LFM leader in browseCacheLFM for tooltip display.
+                    -- Also write the leader into browseCache for each role they already
+                    -- have filled so the browse frame shows partial group members.
+                    -- lfmTank/Healer/Damage = slots already filled (from sendLFMStats).
+                    LFG.browseCacheLFM[mDungeonCode] = {
+                        leader    = arg2,
+                        tank      = lfmTank,
+                        healer    = lfmHealer,
+                        damage    = lfmDamage,
+                        timestamp = time(),
+                    }
+                    if not LFG.browseCache[mDungeonCode] then
+                        LFG.browseCache[mDungeonCode] = {}
+                    end
+                    -- Leader always counts as a member; store them under their filled role.
+                    -- We use a sentinel name 'LFM:' .. arg2 to distinguish LFM entries
+                    -- from solo LFG entries so they don't pollute the solo tooltip lists.
+                    -- Write "[Leader's Group]" into browseCache for every role
+                    -- that the LFM broadcast says is already filled, so the browse
+                    -- frame shows the group under each role they have covered.
+                    local leaderLabel = "[" .. arg2 .. "'s Group]"
+                    if not LFG.browseNames[mDungeonCode] then LFG.browseNames[mDungeonCode] = {} end
+                    local filledRoles = {}
+                    if lfmTank   > 0 then table.insert(filledRoles, 'tank')   end
+                    if lfmHealer > 0 then table.insert(filledRoles, 'healer') end
+                    if lfmDamage > 0 then table.insert(filledRoles, 'damage') end
+                    for _, role in ipairs(filledRoles) do
+                        if not LFG.browseCache[mDungeonCode][role] then
+                            LFG.browseCache[mDungeonCode][role] = {}
+                        end
+                        LFG.browseCache[mDungeonCode][role][leaderLabel] = time()
+                        -- Rebuild tooltip name string for this role
+                        local lnames = ''
+                        for pname, _ in next, LFG.browseCache[mDungeonCode][role] do
+                            lnames = lnames == '' and pname or (lnames .. '\n' .. pname)
+                        end
+                        LFG.browseNames[mDungeonCode][role] = lnames
+                    end
 
                     -- CR step-down: if we're the elected CR leader but this sender
                     -- sorts alphabetically before us, they should lead instead.
@@ -4150,9 +4198,30 @@ function LFG.BrowseRow_Update(code)
         local label = color .. dungeonName
         if LFG.dungeonsSpamDisplayLFM[code] and LFG.dungeonsSpamDisplayLFM[code] > 0 then
             label = label .. ' (' .. LFG.dungeonsSpamDisplayLFM[code] .. '/5)'
-            _G['BrowseFrame_' .. code .. 'IconLeader']:Show()
+            local iconLeader = _G['BrowseFrame_' .. code .. 'IconLeader']
+            if iconLeader then iconLeader:Show() end
+            -- Show LFM leader info in a tooltip on the leader icon
+            local lfmEntry = LFG.browseCacheLFM[code]
+            if lfmEntry and iconLeader then
+                local needed = {}
+                if lfmEntry.tank   < 1 then table.insert(needed, COLOR_TANK   .. 'Tank')   end
+                if lfmEntry.healer < 1 then table.insert(needed, COLOR_HEALER .. 'Healer') end
+                local dmgNeeded = 3 - lfmEntry.damage
+                if dmgNeeded > 0 then
+                    table.insert(needed, COLOR_DAMAGE .. dmgNeeded .. ' Damage')
+                end
+                local needStr = #needed > 0
+                    and (COLOR_WHITE .. ' needs: ' .. table.concat(needed, COLOR_WHITE .. ', '))
+                    or  (COLOR_GREEN .. ' group full')
+                LFG.addOnEnterTooltip(iconLeader,
+                    COLOR_HUNTER .. lfmEntry.leader .. needStr, nil, nil, 15, 0)
+            end
         else
-            _G['BrowseFrame_' .. code .. 'IconLeader']:Hide()
+            local iconLeader = _G['BrowseFrame_' .. code .. 'IconLeader']
+            if iconLeader then
+                iconLeader:Hide()
+                LFG.removeOnEnterTooltip(iconLeader)
+            end
         end
         _G['BrowseFrame_' .. code .. 'DungeonName']:SetText(label)
     end
@@ -4309,6 +4378,19 @@ function LFG.LFGBrowse_Update()
                 if LFG.dungeonsSpamDisplayLFM[data.code] > 0 then
                     _G["BrowseFrame_" .. data.code .. "DungeonName"]:SetText(color .. dungeon .. " (" .. LFG.dungeonsSpamDisplayLFM[data.code] .. "/5)")
                     _G["BrowseFrame_" .. data.code .. "IconLeader"]:Show()
+                    local lfmEntry = LFG.browseCacheLFM[data.code]
+                    if lfmEntry then
+                        local needed = {}
+                        if lfmEntry.tank   < 1 then table.insert(needed, COLOR_TANK   .. 'Tank')   end
+                        if lfmEntry.healer < 1 then table.insert(needed, COLOR_HEALER .. 'Healer') end
+                        local dmgNeeded = 3 - lfmEntry.damage
+                        if dmgNeeded > 0 then table.insert(needed, COLOR_DAMAGE .. dmgNeeded .. ' Damage') end
+                        local needStr = #needed > 0
+                            and (COLOR_WHITE .. ' needs: ' .. table.concat(needed, COLOR_WHITE .. ', '))
+                            or  (COLOR_GREEN .. ' group full')
+                        LFG.addOnEnterTooltip(_G["BrowseFrame_" .. data.code .. "IconLeader"],
+                            COLOR_HUNTER .. lfmEntry.leader .. needStr, nil, nil, 15, 0)
+                    end
                 end
 
                 local tank_color = ''
