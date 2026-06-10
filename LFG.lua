@@ -5587,10 +5587,15 @@ function LFG.updateDungeonsSpamDisplay(code, lfm, numLFM)
     end
 
     if LFG.browseFrames[code] and _G['BrowseFrame_' .. code] and _G['BrowseFrame_' .. code]:IsShown() then
+        -- Row exists and is visible: do a lightweight in-place update.
         LFG.BrowseRow_Update(code)
-    else
-        BrowseDungeonListFrame_Update()
+    elseif _G['LFGBrowse'] and _G['LFGBrowse']:IsVisible() then
+        -- Browse panel is open but this row hasn't been created yet:
+        -- do a full rebuild so the new row gets created.
+        LFG.LFGBrowse_Update()
     end
+    -- If Browse panel is not visible, do nothing.
+    -- LFGBrowse_Update will build all rows correctly when the panel opens.
 
 end
 
