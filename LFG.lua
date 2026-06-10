@@ -4392,16 +4392,33 @@ function LFG.LFGBrowse_Update()
                 if not LFG.browseFrames[data.code] then
                     LFG.browseFrames[data.code] = CreateFrame("Frame", "BrowseFrame_" .. data.code, _G["BrowseScrollFrameChildren"], "LFGBrowseDungeonTemplate")
                     -- Layer Textures from virtual templates are NOT registered in _G when
-                    -- created via CreateFrame at runtime. Walk regions to cache IconLeader.
+                    -- created via CreateFrame at runtime. GetName() also returns nil for
+                    -- them in 3.3.5a. Match by texture file path instead.
                     local _bf = LFG.browseFrames[data.code]
                     if _bf and not _bf._iconLeader then
-                        for i = 1, _bf:GetNumRegions() do
+                        local numR = _bf:GetNumRegions()
+                        for i = 1, numR do
                             local r = select(i, _bf:GetRegions())
-                            if r and r.GetName and r:GetName() and
-                                    string.find(r:GetName(), 'IconLeader', 1, true) then
-                                _bf._iconLeader = r
-                                break
+                            if r and r.GetTexture then
+                                local tex = r:GetTexture()
+                                if tex and string.find(string.lower(tostring(tex)),
+                                        'leadericon', 1, true) then
+                                    _bf._iconLeader = r
+                                    break
+                                end
                             end
+                        end
+                        -- Fallback: if path match failed, create a dedicated overlay
+                        -- Button at the same position that IS registered in _G.
+                        -- This gives us a reliable SetScript target for tooltips.
+                        if not _bf._iconLeader then
+                            local overlayBtn = CreateFrame('Button', 'BrowseFrame_' .. data.code .. 'IconLeader', _bf)
+                            overlayBtn:SetWidth(16)
+                            overlayBtn:SetHeight(16)
+                            overlayBtn:SetPoint('TOPLEFT', _bf, 'TOPLEFT', 2, -3)
+                            overlayBtn:SetAlpha(0)  -- invisible; only used for tooltip scripts
+                            _bf._iconLeader = overlayBtn
+                            lfdebug('BrowseFrame_' .. data.code .. ': created overlay button for IconLeader tooltip')
                         end
                     end
                 end
