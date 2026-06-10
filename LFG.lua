@@ -4411,7 +4411,9 @@ function LFG.LFGBrowse_Update()
                         end
                     end
                 end
-                if _bf and not _bf._iconLeader then
+                if _bf and (not _bf._iconLeader or not _bf._iconLeader.SetScript) then
+                    -- If _iconLeader was cached as a Texture (no SetScript), clear it.
+                    _bf._iconLeader = nil
                     -- Separate overlay Button for tooltip SetScript (Textures don't support it).
                     local btnName = 'BrowseFrame_' .. data.code .. 'IconLeader'
                     local overlayBtn = _G[btnName] or CreateFrame('Button', btnName, _bf)
