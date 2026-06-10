@@ -1207,13 +1207,24 @@ LFGComms:SetScript("OnEvent", function()
             end
         end
         if event == 'PARTY_INVITE_REQUEST' then
+            lfdebug('PARTY_INVITE_REQUEST from=' .. tostring(arg1)
+                .. ' acceptNextInvite=' .. tostring(LFG.acceptNextInvite)
+                .. ' onlyAcceptFrom=' .. tostring(LFG.onlyAcceptFrom)
+                .. ' foundGroup=' .. tostring(LFG.foundGroup)
+                .. ' confirmPending=' .. tostring(LFG.confirmPending))
             if LFG.acceptNextInvite and arg1 == LFG.onlyAcceptFrom then
                 StaticPopup_Hide("PARTY_INVITE")
                 LFG.acceptNextInvite  = false
                 LFG.pendingInviteFrom = arg1
-                local mDungeon    = (LFG.groupFullCode ~= '' and LFG.groupFullCode) or LFG.LFMDungeonCode
+                local mDungeon    = (LFG.groupFullCode ~= '' and LFG.groupFullCode)
+                                 or (LFG.LFMDungeonCode ~= '' and LFG.LFMDungeonCode)
+                                 or ''
                 local dungeonName = LFG.dungeonNameFromCode(mDungeon)
-                local myRole      = (LFG.dungeons[dungeonName] and LFG.dungeons[dungeonName].myRole ~= '' and LFG.dungeons[dungeonName].myRole) or LFG_ROLE or 'damage'
+                local myRole      = (LFG.dungeons[dungeonName] and LFG.dungeons[dungeonName].myRole ~= '' and LFG.dungeons[dungeonName].myRole)
+                                 or (LFG_ROLE ~= '' and LFG_ROLE)
+                                 or 'damage'
+                lfdebug('PARTY_INVITE: building confirm popup mDungeon=' .. tostring(mDungeon)
+                    .. ' myRole=' .. tostring(myRole) .. ' dungeonName=' .. tostring(dungeonName))
                 local groupData   = LFG.group[mDungeon] or { tank='', healer='', damage1='', damage2='', damage3='' }
                 LFG.confirmPending  = true
                 LFG.confirmLeader   = arg1
@@ -1238,10 +1249,15 @@ LFGComms:SetScript("OnEvent", function()
                 _G['LFGGroupReady']:Show()
                 LFGGroupConfirmTimer:Show()
                 PlaySoundFile("Interface\\Addons\\LFG\\sound\\lfg_rolecheck.ogg")
+                lfdebug('PARTY_INVITE: confirm popup shown for ' .. tostring(arg1))
             elseif LFG.acceptNextInvite and arg1 ~= LFG.onlyAcceptFrom then
+                lfdebug('PARTY_INVITE: declining wrong sender=' .. tostring(arg1) .. ' expected=' .. tostring(LFG.onlyAcceptFrom))
                 LFG.DeclineGroupInvite()
             elseif not LFG.foundGroup and not LFG.confirmPending then
+                lfdebug('PARTY_INVITE: unexpected invite, leaving queue. sender=' .. tostring(arg1))
                 leaveQueue('PARTY_INVITE_REQUEST')
+            else
+                lfdebug('PARTY_INVITE: ignored (foundGroup=' .. tostring(LFG.foundGroup) .. ' confirmPending=' .. tostring(LFG.confirmPending) .. ')')
             end
         end
         if event == 'CHAT_MSG_CHANNEL_LEAVE' then
@@ -1569,6 +1585,13 @@ LFGComms:SetScript("OnEvent", function()
                             end
                         end
                         -- Act on found: messages addressed to us
+                        if name == me then
+                            lfdebug('found: addressed to me role=' .. tostring(mRole)
+                                .. ' LFG_ROLE=' .. tostring(LFG_ROLE)
+                                .. ' foundGroup=' .. tostring(LFG.foundGroup)
+                                .. ' leader=' .. tostring(arg2)
+                                .. ' dungeon=' .. tostring(mDungeon))
+                        end
                         if string.find(LFG_ROLE, mRole, 1, true) and not LFG.foundGroup and name == me then
                             local proceed = true
                             if LFG.isClassRun(mDungeon) and LFG.classRunEligible(mDungeon) then
@@ -1842,7 +1865,8 @@ function lfdebug(a)
         end
         return true
     end
-    --lfprint('|cff0070de[LFGDEBUG:' .. time() .. ']|cffffffff[' .. a .. ']')
+    if a == nil then a = '(nil)' end
+    lfprint('|cff0070de[LFGDEBUG:' .. time() .. ']|cffffffff[' .. tostring(a) .. ']')
 end
 
 local hookChatFrame = function(frame)
@@ -3866,6 +3890,10 @@ function LFG.sendMinimapDataToParty(code)
 end
 
 function LFG.addOnEnterTooltip(frame, title, text1, text2, x, y)
+    if not frame or not frame.SetScript then
+        lfdebug('addOnEnterTooltip: nil or invalid frame for title=' .. tostring(title))
+        return
+    end
     frame:SetScript("OnEnter", function()
         if x and y then
             GameTooltip:SetOwner(this, "ANCHOR_RIGHT", x, y)
@@ -3887,6 +3915,7 @@ function LFG.addOnEnterTooltip(frame, title, text1, text2, x, y)
 end
 
 function LFG.removeOnEnterTooltip(frame)
+    if not frame or not frame.SetScript then return end
     frame:SetScript("OnEnter", function()
     end)
     frame:SetScript("OnLeave", function()
@@ -4350,7 +4379,9 @@ function LFG.LFGBrowse_Update()
         local dungeon = dungeonData.name
         local data = dungeonData.data
 
-        if LFG.dungeonsSpam[data.code] and LFG.level >= data.minLevel then
+        if not data or not data.code then
+            lfdebug('LFGBrowse_Update: skipping malformed entry name=' .. tostring(dungeon))
+        elseif LFG.dungeonsSpam[data.code] and LFG.level >= data.minLevel then
 
             if LFG.dungeonsSpamDisplay[data.code].tank > 0 or LFG.dungeonsSpamDisplay[data.code].healer > 0 or LFG.dungeonsSpamDisplay[data.code].damage > 0 then
 
