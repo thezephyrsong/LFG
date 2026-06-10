@@ -4227,7 +4227,8 @@ function LFG.BrowseRow_Update(code)
         local label = color .. dungeonName
         if LFG.dungeonsSpamDisplayLFM[code] and LFG.dungeonsSpamDisplayLFM[code] > 0 then
             label = label .. ' (' .. LFG.dungeonsSpamDisplayLFM[code] .. '/5)'
-            local iconLeader = _G['BrowseFrame_' .. code .. 'IconLeader']
+            local iconLeader = (LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader)
+                            or _G['BrowseFrame_' .. code .. 'IconLeader']
             if iconLeader then iconLeader:Show() end
             -- Show LFM leader info in a tooltip on the leader icon
             local lfmEntry = LFG.browseCacheLFM[code]
@@ -4246,7 +4247,8 @@ function LFG.BrowseRow_Update(code)
                     COLOR_HUNTER .. lfmEntry.leader .. needStr, nil, nil, 15, 0)
             end
         else
-            local iconLeader = _G['BrowseFrame_' .. code .. 'IconLeader']
+            local iconLeader = (LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader)
+                            or _G['BrowseFrame_' .. code .. 'IconLeader']
             if iconLeader then
                 iconLeader:Hide()
                 LFG.removeOnEnterTooltip(iconLeader)
@@ -4389,6 +4391,19 @@ function LFG.LFGBrowse_Update()
 
                 if not LFG.browseFrames[data.code] then
                     LFG.browseFrames[data.code] = CreateFrame("Frame", "BrowseFrame_" .. data.code, _G["BrowseScrollFrameChildren"], "LFGBrowseDungeonTemplate")
+                    -- Layer Textures from virtual templates are NOT registered in _G when
+                    -- created via CreateFrame at runtime. Walk regions to cache IconLeader.
+                    local _bf = LFG.browseFrames[data.code]
+                    if _bf and not _bf._iconLeader then
+                        for i = 1, _bf:GetNumRegions() do
+                            local r = select(i, _bf:GetRegions())
+                            if r and r.GetName and r:GetName() and
+                                    string.find(r:GetName(), 'IconLeader', 1, true) then
+                                _bf._iconLeader = r
+                                break
+                            end
+                        end
+                    end
                 end
 
                 _G['BrowseFrame_' .. data.code .. 'Background']:SetTexture('Interface\\addons\\LFG\\images\\background\\ui-lfg-background-' .. data.background)
@@ -4412,7 +4427,8 @@ function LFG.LFGBrowse_Update()
                 end
 
                 _G["BrowseFrame_" .. data.code .. "DungeonName"]:SetText(color .. dungeon)
-                local _iconLeader = _G["BrowseFrame_" .. data.code .. "IconLeader"]
+                local _iconLeader = (LFG.browseFrames[data.code] and LFG.browseFrames[data.code]._iconLeader)
+                                 or _G["BrowseFrame_" .. data.code .. "IconLeader"]
                 if _iconLeader then _iconLeader:Hide() end
 
                 if LFG.dungeonsSpamDisplayLFM[data.code] > 0 then
