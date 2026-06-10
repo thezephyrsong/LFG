@@ -4227,10 +4227,10 @@ function LFG.BrowseRow_Update(code)
         local label = color .. dungeonName
         if LFG.dungeonsSpamDisplayLFM[code] and LFG.dungeonsSpamDisplayLFM[code] > 0 then
             label = label .. ' (' .. LFG.dungeonsSpamDisplayLFM[code] .. '/5)'
-            local iconLeader = (LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader)
-                            or _G['BrowseFrame_' .. code .. 'IconLeader']
-            if iconLeader then iconLeader:Show() end
-            -- Show LFM leader info in a tooltip on the leader icon
+            local iconLeaderTex = LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeaderTex
+            local iconLeader    = LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader
+            if iconLeaderTex then iconLeaderTex:Show() end
+            -- Show LFM leader info in a tooltip on the leader icon overlay button
             local lfmEntry = LFG.browseCacheLFM[code]
             if lfmEntry and iconLeader then
                 local needed = {}
@@ -4247,12 +4247,10 @@ function LFG.BrowseRow_Update(code)
                     COLOR_HUNTER .. lfmEntry.leader .. needStr, nil, nil, 15, 0)
             end
         else
-            local iconLeader = (LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader)
-                            or _G['BrowseFrame_' .. code .. 'IconLeader']
-            if iconLeader then
-                iconLeader:Hide()
-                LFG.removeOnEnterTooltip(iconLeader)
-            end
+            local iconLeaderTex = LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeaderTex
+            local iconLeader    = LFG.browseFrames[code] and LFG.browseFrames[code]._iconLeader
+            if iconLeaderTex then iconLeaderTex:Hide() end
+            if iconLeader then LFG.removeOnEnterTooltip(iconLeader) end
         end
         _G['BrowseFrame_' .. code .. 'DungeonName']:SetText(label)
     end
@@ -4398,7 +4396,8 @@ function LFG.LFGBrowse_Update()
                 -- returns nil for them. Match by texture file path, with an invisible
                 -- overlay Button as a fallback so SetScript always has a valid target.
                 local _bf = LFG.browseFrames[data.code]
-                if _bf and not _bf._iconLeader then
+                if _bf and not _bf._iconLeaderTex then
+                    -- Find the texture region for Show/Hide (Textures lack SetScript).
                     local numR = _bf:GetNumRegions()
                     for i = 1, numR do
                         local r = select(i, _bf:GetRegions())
@@ -4406,22 +4405,22 @@ function LFG.LFGBrowse_Update()
                             local tex = r:GetTexture()
                             if tex and string.find(string.lower(tostring(tex)),
                                     'leadericon', 1, true) then
-                                _bf._iconLeader = r
+                                _bf._iconLeaderTex = r
                                 break
                             end
                         end
                     end
-                    if not _bf._iconLeader then
-                        -- Overlay Button: registered in _G, supports SetScript.
-                        local btnName = 'BrowseFrame_' .. data.code .. 'IconLeader'
-                        local overlayBtn = _G[btnName] or CreateFrame('Button', btnName, _bf)
-                        overlayBtn:SetWidth(16)
-                        overlayBtn:SetHeight(16)
-                        overlayBtn:SetPoint('TOPLEFT', _bf, 'TOPLEFT', 2, -3)
-                        overlayBtn:SetAlpha(0)
-                        _bf._iconLeader = overlayBtn
-                        lfdebug('BrowseFrame_' .. data.code .. ': overlay button created for IconLeader')
-                    end
+                end
+                if _bf and not _bf._iconLeader then
+                    -- Separate overlay Button for tooltip SetScript (Textures don't support it).
+                    local btnName = 'BrowseFrame_' .. data.code .. 'IconLeader'
+                    local overlayBtn = _G[btnName] or CreateFrame('Button', btnName, _bf)
+                    overlayBtn:SetWidth(16)
+                    overlayBtn:SetHeight(16)
+                    overlayBtn:SetPoint('TOPLEFT', _bf, 'TOPLEFT', 2, -3)
+                    overlayBtn:SetAlpha(0)
+                    _bf._iconLeader = overlayBtn
+                    lfdebug('BrowseFrame_' .. data.code .. ': overlay button ready for IconLeader tooltip')
                 end
 
                 _G['BrowseFrame_' .. data.code .. 'Background']:SetTexture('Interface\\addons\\LFG\\images\\background\\ui-lfg-background-' .. data.background)
@@ -4445,14 +4444,14 @@ function LFG.LFGBrowse_Update()
                 end
 
                 _G["BrowseFrame_" .. data.code .. "DungeonName"]:SetText(color .. dungeon)
-                local _iconLeader = (LFG.browseFrames[data.code] and LFG.browseFrames[data.code]._iconLeader)
-                                 or _G["BrowseFrame_" .. data.code .. "IconLeader"]
-                if _iconLeader then _iconLeader:Hide() end
+                local _iconLeaderTex = LFG.browseFrames[data.code] and LFG.browseFrames[data.code]._iconLeaderTex
+                local _iconLeader    = LFG.browseFrames[data.code] and LFG.browseFrames[data.code]._iconLeader
+                if _iconLeaderTex then _iconLeaderTex:Hide() end
 
                 if LFG.dungeonsSpamDisplayLFM[data.code] > 0 then
                     _G["BrowseFrame_" .. data.code .. "DungeonName"]:SetText(color .. dungeon .. " (" .. LFG.dungeonsSpamDisplayLFM[data.code] .. "/5)")
-                    if _iconLeader then
-                        _iconLeader:Show()
+                    if _iconLeaderTex then
+                        _iconLeaderTex:Show()
                         local lfmEntry = LFG.browseCacheLFM[data.code]
                         if lfmEntry then
                             local needed = {}
