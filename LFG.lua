@@ -249,27 +249,32 @@ LFGTime:SetScript("OnUpdate", function()
                     end
                 end
 
-                for dungeon, data in next, LFG.dungeons do
-                    -- Reset per-window spam counters (fresh accumulation this cycle).
-                    LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
-                    -- Seed display from post-eviction cache so rows keep live data.
-                    local tankCount, healerCount, dmgCount = 0, 0, 0
-                    local cache = LFG.browseCache[data.code]
-                    if cache then
-                        for role, players in next, cache do
-                            local n = 0
-                            for _ in next, players do n = n + 1 end
-                            if role == 'tank'   then tankCount   = n end
-                            if role == 'healer' then healerCount = n end
-                            if role == 'damage' then dmgCount    = n end
+                -- Reset spam counters for ALL dungeon tables so elite encounter
+                -- codes don't accumulate stale counts across windows.
+                local allSpamTables = { LFG.allDungeons, LFG.eliteEncounters }
+                for _, tbl in ipairs(allSpamTables) do
+                    for _, data in next, tbl do
+                        LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
+                        local tankCount, healerCount, dmgCount = 0, 0, 0
+                        local cache = LFG.browseCache[data.code]
+                        if cache then
+                            for role, players in next, cache do
+                                local n = 0
+                                for _ in next, players do n = n + 1 end
+                                if role == 'tank'   then tankCount   = n end
+                                if role == 'healer' then healerCount = n end
+                                if role == 'damage' then dmgCount    = n end
+                            end
                         end
+                        LFG.dungeonsSpamDisplay[data.code] = {
+                            tank   = tankCount,
+                            healer = healerCount,
+                            damage = dmgCount
+                        }
                     end
-                    LFG.dungeonsSpamDisplay[data.code] = {
-                        tank   = tankCount,
-                        healer = healerCount,
-                        damage = dmgCount
-                    }
-                    -- reset myRole
+                end
+                for dungeon, data in next, LFG.dungeons do
+                    -- reset myRole for active dungeon table only
                     if LFG.groupFullCode == '' and not LFG.inGroup then
                         LFG.dungeons[dungeon].myRole = ''
                     end
@@ -1941,17 +1946,28 @@ LFG:SetScript("OnEvent", function()
             lfdebug('PARTY_MEMBERS_CHANGED') --check -- triggers in raids too
             DungeonListFrame_Update()
 
-            if not LFG.inGroup then
-                LFG.currentGroupSize = 1
-            end
-            lfdebug('joined' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
-            lfdebug('left' .. GetNumPartyMembers() + 1 .. ' < ' .. LFG.currentGroupSize)
-
-            local someoneJoined = GetNumPartyMembers() + 1 > LFG.currentGroupSize
-            local someoneLeft = GetNumPartyMembers() + 1 < LFG.currentGroupSize
-
-            LFG.currentGroupSize = GetNumPartyMembers() + 1
+            -- Snapshot the previous group size BEFORE updating inGroup or
+            -- resetting currentGroupSize, so the delta comparison is accurate.
+            -- The old code reset currentGroupSize to 1 whenever inGroup was
+            -- false (stale), which made joined/left always false for the first
+            -- PARTY_MEMBERS_CHANGED after forming a group.
+            local prevGroupSize = LFG.currentGroupSize
+            local newGroupSize  = GetNumPartyMembers() + 1
             LFG.inGroup = GetNumRaidMembers() == 0 and GetNumPartyMembers() > 0
+
+            -- Only reset the baseline to 1 when we know we are truly solo
+            -- (inGroup now reflects the current state).
+            if not LFG.inGroup then
+                prevGroupSize = 1
+            end
+
+            lfdebug('joined' .. newGroupSize .. ' > ' .. prevGroupSize)
+            lfdebug('left'   .. newGroupSize .. ' < ' .. prevGroupSize)
+
+            local someoneJoined = newGroupSize > prevGroupSize
+            local someoneLeft   = newGroupSize < prevGroupSize
+
+            LFG.currentGroupSize = newGroupSize
 
             BrowseDungeonListFrame_Update()
 
@@ -2376,21 +2392,27 @@ function LFG.init()
 	    LFG.hideButtonTextures("RoleDamageTooltipButton")
 	end
 
-    for dungeon, data in next, LFG.dungeons do
-        if not LFG.dungeonsSpam[data.code] then
-            LFG.dungeonsSpam[data.code] = {
-                tank = 0,
-                healer = 0,
-                damage = 0
-            }
-        end
-        if not LFG.dungeonsSpamDisplay[data.code] then
-            LFG.dungeonsSpamDisplay[data.code] = {
-                tank = 0,
-                healer = 0,
-                damage = 0
-            }
-            LFG.dungeonsSpamDisplayLFM[data.code] = 0
+    -- Seed spam tables for ALL dungeon tables, not just the active one.
+    -- eliteEncounters codes (e.g. silithusd) arrive on the channel regardless
+    -- of which tab is active, so they must be initialised up front.
+    local allTables = { LFG.allDungeons, LFG.eliteEncounters }
+    for _, tbl in ipairs(allTables) do
+        for dungeon, data in next, tbl do
+            if not LFG.dungeonsSpam[data.code] then
+                LFG.dungeonsSpam[data.code] = {
+                    tank = 0,
+                    healer = 0,
+                    damage = 0
+                }
+            end
+            if not LFG.dungeonsSpamDisplay[data.code] then
+                LFG.dungeonsSpamDisplay[data.code] = {
+                    tank = 0,
+                    healer = 0,
+                    damage = 0
+                }
+                LFG.dungeonsSpamDisplayLFM[data.code] = 0
+            end
         end
     end
 end
