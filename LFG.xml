@@ -582,7 +582,7 @@
 
     <Frame name="LFGGroupReady" hidden="true" parent="UIParent" enableMouse="true">
         <Size>
-            <AbsDimension x="308" y="320"/>
+            <AbsDimension x="308" y="280"/>
         </Size>
         <Anchors>
             <Anchor point="TOP">
@@ -737,7 +737,7 @@
                 <FontString name="$parentConfirmTimer" inherits="GameFontHighlight" text="" hidden="true">
                     <Size><AbsDimension x="380" y="18"/></Size>
                     <Anchors>
-                        <Anchor point="TOP"><Offset><AbsDimension x="0" y="-128"/></Offset></Anchor>
+                        <Anchor point="TOP"><Offset><AbsDimension x="0" y="-140"/></Offset></Anchor>
                     </Anchors>
                 </FontString>
 
@@ -746,7 +746,7 @@
                 <!-- 5 icons * 44px + 4 gaps * 14px = 220+56 = 276px total; centre offset = -138 -->
                 <Texture name="$parentConfirmIconTank" file="Interface\AddOns\LFG\images\tank2" hidden="true">
                     <Size><AbsDimension x="44" y="44"/></Size>
-                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="-114" y="-152"/></Offset></Anchor></Anchors>
+                    <Anchors><Anchor point="TOP"><Offset><AbsDimension x="-114" y="-162"/></Offset></Anchor></Anchors>
                 </Texture>
                 <Texture name="$parentConfirmStatusTank" file="Interface\AddOns\LFG\images\readycheck-waiting" hidden="true">
                     <Size><AbsDimension x="18" y="18"/></Size>
