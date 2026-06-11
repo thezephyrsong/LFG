@@ -24,18 +24,26 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
           # Replace the version line in the .toc file
-          # This looks for any line starting with ## Version: and replaces it
           sed -i "s/^## Version: .*/## Version: ${{ github.ref_name }}/g" LFG.toc
           
-          # Check if there are changes to commit (prevents error if version is already correct)
+          # Check if there are changes to commit
           if git diff --quiet LFG.toc; then
             echo "No changes to TOC file"
           else
             git add LFG.toc
             git commit -m "chore: update version to ${{ github.ref_name }} [skip ci]"
-            git push origin HEAD:main
+            
+            # Find which remote branch contains this tag
+            TARGET_BRANCH=$(git branch -r --contains ${{ github.ref_name }} | grep -v 'HEAD' | head -n 1 | sed 's/^[[:space:]]*origin\///')
+            
+            if [ -z "$TARGET_BRANCH" ]; then
+              echo "Could not determine branch, defaulting to main"
+              TARGET_BRANCH="main"
+            fi
+            
+            echo "Pushing TOC update back to branch: $TARGET_BRANCH"
+            git push origin HEAD:$TARGET_BRANCH
           fi
-
       - name: Build zip
         run: |
           mkdir -p LFG
