@@ -1678,7 +1678,7 @@ LFGComms:SetScript("OnEvent", function()
             end
 
             if string.sub(arg1, 1, 10) == 'goingWith:' and
-                    (string.find(LFG_ROLE, 'tank', 1, true) or LFG.isLeader) then
+                    (string.find(LFG_ROLE, 'tank', 1, true) or LFG.isLeader or LFG.crLeader) then
 
                 local withEx = StringSplit(arg1, ':')
                 local leader = withEx[2]
@@ -1703,6 +1703,21 @@ LFGComms:SetScript("OnEvent", function()
                     lfdebug('im not leader')
                 end
                 if LFG.isLeader and leader == me then
+                    if LFG.isNeededInLFMGroup(mRole, arg2, mDungeon) then
+                        if mRole == 'tank' then
+                            LFG.addTank(mDungeon, arg2, true, true)
+                        end
+                        if mRole == 'healer' then
+                            LFG.addHealer(mDungeon, arg2, true, true)
+                        end
+                        if mRole == 'damage' then
+                            LFG.addDamage(mDungeon, arg2, true, true)
+                        end
+                        LFG.inviteInLFMGroup(arg2)
+                    end
+                end
+                -- CR leader path: same as isLeader but for virtual CR leadership
+                if LFG.crLeader and leader == me then
                     if LFG.isNeededInLFMGroup(mRole, arg2, mDungeon) then
                         if mRole == 'tank' then
                             LFG.addTank(mDungeon, arg2, true, true)
