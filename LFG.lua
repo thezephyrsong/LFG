@@ -860,15 +860,22 @@ LFGComms:SetScript("OnEvent", function()
                 end
             end
             if string.sub(arg2, 1, 11) == 'LFGVersion:' and arg4 ~= me then
+                local verEx = StringSplit(arg2, ':')
+                local theirVer = verEx[2]
                 if not LFG.showedUpdateNotification then
-                    local verEx = StringSplit(arg2, ':')
-                    if LFG.ver(verEx[2]) > LFG.ver(addonVer) then
+                    if LFG.ver(theirVer) > LFG.ver(addonVer) then
                         lfprint(COLOR_HUNTER .. 'Looking For Group ' .. COLOR_WHITE .. ' - new version available ' ..
-                                COLOR_GREEN .. 'v' .. verEx[2] .. COLOR_WHITE .. ' (current version ' ..
+                                COLOR_GREEN .. 'v' .. theirVer .. COLOR_WHITE .. ' (current version ' ..
                                 COLOR_ORANGE .. 'v' .. addonVer .. COLOR_WHITE .. ')')
-                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
+                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG/')
                         LFG.showedUpdateNotification = true
                     end
+                end
+                -- Nudge outdated players once per session. We reuse the existing
+                -- LFGVersion: message so their handler fires even on old versions.
+                if LFG.ver(theirVer) < LFG.ver(addonVer) and not LFG.WarnedPlayers[arg4] then
+                    LFG.WarnedPlayers[arg4] = true
+                    SendAddonMessage(LFG_ADDON_CHANNEL, 'LFGVersion:' .. addonVer, 'WHISPER', arg4)
                 end
             end
 
@@ -1244,6 +1251,7 @@ LFGComms:SetScript("OnEvent", function()
                 end
                 _G['LFGGroupReadyAwesome']:SetText('Accept')
                 _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+                _G['LFGGroupReadyAwesome']:Enable()
                 _G['LFGGroupReadyNotCool']:SetText('Decline')
                 _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
                 _G['LFGGroupReady']:Show()
@@ -2176,13 +2184,18 @@ LFG:SetScript("OnEvent", function()
                 LFG.sendMinimapDataToParty(LFG.LFMDungeonCode)
             end
             -- update awesome button enabled if 5/5 disabled + text if not
-            local awesomeButton = _G['LFGGroupReadyAwesome']
-            awesomeButton:SetText('Waiting Players (' .. LFG.groupSizeMax - GetNumPartyMembers() - 1 .. ')')
-            awesomeButton:Disable()
+            -- Skip this when confirm-mode is active: the button already says
+            -- "Accept" and is wired to LFGGroupConfirm_Accept; overwriting it
+            -- here would grey it out and break the accept flow.
+            if not LFG.confirmPending then
+                local awesomeButton = _G['LFGGroupReadyAwesome']
+                awesomeButton:SetText('Waiting Players (' .. LFG.groupSizeMax - GetNumPartyMembers() - 1 .. ')')
+                awesomeButton:Disable()
 
-            if GetNumPartyMembers() == LFG.groupSizeMax - 1 then
-                awesomeButton:SetText('Let\'s do this!')
-                awesomeButton:Enable()
+                if GetNumPartyMembers() == LFG.groupSizeMax - 1 then
+                    awesomeButton:SetText('Let\'s do this!')
+                    awesomeButton:Enable()
+                end
             end
             lfdebug(' end PARTY_MEMBERS_CHANGED')
         end
@@ -5497,6 +5510,7 @@ SlashCmdList["LFG"] = function(cmd)
             end
             _G['LFGGroupReadyAwesome']:SetText('Accept')
             _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+            _G['LFGGroupReadyAwesome']:Enable()
             _G['LFGGroupReadyNotCool']:SetText('Decline')
             _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
             _G['LFGGroupReady']:Show()
