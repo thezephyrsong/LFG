@@ -1716,6 +1716,18 @@ LFGComms:SetScript("OnEvent", function()
                         LFG.inviteInLFMGroup(arg2)
                     end
                 end
+                -- Solo-queue tank path: we sent found: but are not yet party leader
+                -- (no party exists yet). When a healer/damage responds with goingWith:us,
+                -- slot them into our group table so checkGroupFull can fire correctly.
+                if not LFG.isLeader and leader == me and string.find(LFG_ROLE, 'tank', 1, true) then
+                    lfdebug('goingWith: solo tank path - slotting ' .. arg2 .. ' as ' .. mRole .. ' in ' .. mDungeon)
+                    if mRole == 'healer' then
+                        LFG.addHealer(mDungeon, arg2, false, true)
+                    end
+                    if mRole == 'damage' then
+                        LFG.addDamage(mDungeon, arg2, false, true)
+                    end
+                end
                 if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupReady']:IsVisible() and LFG.confirmPending then
                     local g = LFG.group[mDungeon]
                     if g then
