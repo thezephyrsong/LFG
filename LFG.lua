@@ -339,6 +339,25 @@ LFGGoingWithPicker:SetScript("OnUpdate", function()
     end
 end)
 
+-- Invite timeout: if we sent goingWith but never received the party invite,
+-- clear acceptNextInvite after 60 seconds so the next reset can proceed normally.
+local LFGInviteTimeout = CreateFrame("Frame")
+LFGInviteTimeout:Hide()
+LFGInviteTimeout:SetScript("OnShow", function()
+    this.startTime = GetTime()
+end)
+LFGInviteTimeout:SetScript("OnUpdate", function()
+    if GetTime() - this.startTime >= 60 then
+        if LFG.acceptNextInvite and not LFG.inGroup then
+            lfdebug('LFGInviteTimeout: no invite from ' .. tostring(LFG.onlyAcceptFrom) .. ' after 60s, clearing')
+            LFG.acceptNextInvite = false
+            LFG.onlyAcceptFrom   = ''
+            LFG.foundGroup       = false
+        end
+        LFGInviteTimeout:Hide()
+    end
+end)
+
 -- StringSplit: defined locally because the WoW 3.3.5a client does not expose
 -- this as a global (it existed in 1.12 but was removed in later clients).
 -- Splits str on delimiter and returns a table of substrings.
@@ -1227,6 +1246,7 @@ LFGComms:SetScript("OnEvent", function()
             if LFG.acceptNextInvite and arg1 == LFG.onlyAcceptFrom then
                 StaticPopup_Hide("PARTY_INVITE")
                 LFG.acceptNextInvite  = false
+                LFGInviteTimeout:Hide()
                 LFG.pendingInviteFrom = arg1
                 local mDungeon    = (LFG.groupFullCode ~= '' and LFG.groupFullCode)
                                  or (LFG.LFMDungeonCode ~= '' and LFG.LFMDungeonCode)
@@ -1621,6 +1641,8 @@ LFGComms:SetScript("OnEvent", function()
                                 lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
                                 LFG.onlyAcceptFrom   = arg2
                                 LFG.acceptNextInvite = true
+                                LFGInviteTimeout:Hide()
+                                LFGInviteTimeout:Show()
                                 lfdebug('found: waiting for invite from ' .. arg2 .. ' as ' .. mRole .. ' in ' .. mDungeon)
                             end
                         end
@@ -2462,7 +2484,11 @@ LFGQueue:SetScript("OnUpdate", function()
                 lfm = false,
                 checkGroupFull = false
             }
-            if not LFG.inGroup then
+            -- Don't reset while we're waiting for an invite: acceptNextInvite
+            -- means we already responded to a found: and the invite is in flight.
+            -- Resetting here would clear onlyAcceptFrom and cause the invite to
+            -- be silently ignored when it arrives.
+            if not LFG.inGroup and not LFG.acceptNextInvite then
                 LFG.resetGroup()
             end
         end
