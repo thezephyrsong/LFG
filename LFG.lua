@@ -1336,7 +1336,7 @@ LFGComms:SetScript("OnEvent", function()
             if LFG_CONFIG['spamChat'] then
                 lfnotice(LFG.dungeonNameFromCode(code) .. ' group just formed. (type "/lfg spam" to disable this message)')
             end
-            if me == 'Bennylava' then
+            if me == 'Zaenith' then
                 local totalGroups = 0
                 for _, number in next, LFG_FORMED_GROUPS do
                     if number ~= 0 then
@@ -1445,9 +1445,17 @@ LFGComms:SetScript("OnEvent", function()
                                 ' Ask them to update at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
                     end
                 end
+                -- Nudge old-version channel users once per session via whisper.
+                -- meLFG: is broadcast on the LFG channel so we see everyone queuing,
+                -- not just party/guild members. SendAddonMessage WHISPER triggers their
+                -- LFGVersion: handler which prints the update notice with the correct URL.
+                if LFG.ver(ver) < LFG.ver(addonVer) and not LFG.WarnedPlayers[arg2] then
+                    LFG.WarnedPlayers[arg2] = true
+                    SendAddonMessage(LFG_ADDON_CHANNEL, 'LFGVersion:' .. addonVer, 'WHISPER', arg2)
+                end
                 if LFGWhoCounter.listening then
                     LFGWhoCounter.people = LFGWhoCounter.people + 1
-                    if me == 'Bennylava' then
+                    if me == 'Zaenith' then
                         local color = COLOR_GREEN
                         if LFG.ver(ver) < LFG.ver(addonVer) then
                             color = COLOR_ORANGE
@@ -4081,6 +4089,13 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
     LFG.crCheckElection()
 end
 
+function LFG.deQueueAll()
+    for dungeon, data in next, LFG.dungeons do
+        if data.queued then
+            LFG.dungeons[dungeon].queued = false
+        end
+    end
+end
 
 function LFG.resetFormedGroups()
     LFG_FORMED_GROUPS = {}
@@ -4131,6 +4146,9 @@ function LFG.readyStatusReset()
     _G['LFGReadyStatusReadyDamage3']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
 end
 
+function test_dung_ob(code)
+    LFG.showDungeonObjectives(code)
+end
 
 function LFG.showDungeonObjectives(code, numObjectivesComplete)
 
@@ -4673,6 +4691,9 @@ function checkRoleCompatibility(role)
     end
 end
 
+function lfg_replace(s, c, cc)
+    return (string.gsub(s, c, cc))
+end
 
 function acceptRole()
 
@@ -5500,7 +5521,7 @@ SlashCmdList["LFG"] = function(cmd)
             end
         end
         if string.sub(cmd, 1, 3) == 'who' then
-            if me ~= 'Bennylava' then
+            if me ~= 'Zaenith' then
                 return false
             end
             if LFG.channelIndex == 0 then
@@ -5635,7 +5656,7 @@ function LFG.removeChannelFromWindows()
     if LFG_CONFIG and LFG_CONFIG['debug'] then
         return false
     end
-    if me == 'Bennylava' then
+    if me == 'Zaenith' then
         return false
     end
 
