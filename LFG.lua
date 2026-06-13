@@ -499,13 +499,37 @@ LFGObjectives:SetScript("OnEvent", function()
     if event then
         if event == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
             local creatureDied = arg1
-            lfdebug(creatureDied)
-            if LFG.bosses[LFG.groupFullCode] then
-                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                    --creatureDied == 'You have slain ' .. boss .. '!'
-                    if creatureDied == boss .. ' dies.' then
-                        LFGObjectives.objectiveComplete(boss)
-                        return true
+            lfdebug('HOSTILE_DEATH: ' .. tostring(creatureDied) .. ' groupFullCode=' .. tostring(LFG.groupFullCode))
+            -- Search all boss tables when groupFullCode is blank (e.g. non-tank players
+            -- whose groupFullCode may not have been set yet).
+            local codesToCheck = {}
+            if LFG.groupFullCode ~= '' then
+                codesToCheck[LFG.groupFullCode] = true
+            else
+                -- Fallback: check every dungeon we are queued for
+                for _, data in next, LFG.dungeons do
+                    if data.queued or LFG.inGroup then
+                        codesToCheck[data.code] = true
+                    end
+                end
+            end
+            for code, _ in next, codesToCheck do
+                if LFG.bosses[code] then
+                    for _, boss in next, LFG.bosses[code] do
+                        -- Strip the '-s' suffix used on brdarena summoned bosses
+                        local bossName = string.gsub(boss, '%-s$', '')
+                        -- Handle both kill formats:
+                        -- "Boss dies."        = party member landed killing blow
+                        -- "You have slain Boss!" = you landed killing blow
+                        if creatureDied == bossName .. ' dies.' or
+                           creatureDied == 'You have slain ' .. bossName .. '!' then
+                            -- Make sure groupFullCode is set so objectiveComplete works
+                            if LFG.groupFullCode == '' then
+                                LFG.groupFullCode = code
+                            end
+                            LFGObjectives.objectiveComplete(boss)
+                            return true
+                        end
                     end
                 end
             end
@@ -4057,13 +4081,6 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
     LFG.crCheckElection()
 end
 
-function LFG.deQueueAll()
-    for dungeon, data in next, LFG.dungeons do
-        if data.queued then
-            LFG.dungeons[dungeon].queued = false
-        end
-    end
-end
 
 function LFG.resetFormedGroups()
     LFG_FORMED_GROUPS = {}
@@ -4114,9 +4131,6 @@ function LFG.readyStatusReset()
     _G['LFGReadyStatusReadyDamage3']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
 end
 
-function test_dung_ob(code)
-    LFG.showDungeonObjectives(code)
-end
 
 function LFG.showDungeonObjectives(code, numObjectivesComplete)
 
@@ -4659,9 +4673,6 @@ function checkRoleCompatibility(role)
     end
 end
 
-function lfg_replace(s, c, cc)
-    return (string.gsub(s, c, cc))
-end
 
 function acceptRole()
 
