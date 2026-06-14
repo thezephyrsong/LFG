@@ -249,27 +249,32 @@ LFGTime:SetScript("OnUpdate", function()
                     end
                 end
 
-                for dungeon, data in next, LFG.dungeons do
-                    -- Reset per-window spam counters (fresh accumulation this cycle).
-                    LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
-                    -- Seed display from post-eviction cache so rows keep live data.
-                    local tankCount, healerCount, dmgCount = 0, 0, 0
-                    local cache = LFG.browseCache[data.code]
-                    if cache then
-                        for role, players in next, cache do
-                            local n = 0
-                            for _ in next, players do n = n + 1 end
-                            if role == 'tank'   then tankCount   = n end
-                            if role == 'healer' then healerCount = n end
-                            if role == 'damage' then dmgCount    = n end
+                -- Reset spam counters for ALL dungeon tables so elite encounter
+                -- codes don't accumulate stale counts across windows.
+                local allSpamTables = { LFG.allDungeons, LFG.eliteEncounters }
+                for _, tbl in ipairs(allSpamTables) do
+                    for _, data in next, tbl do
+                        LFG.dungeonsSpam[data.code] = { tank = 0, healer = 0, damage = 0 }
+                        local tankCount, healerCount, dmgCount = 0, 0, 0
+                        local cache = LFG.browseCache[data.code]
+                        if cache then
+                            for role, players in next, cache do
+                                local n = 0
+                                for _ in next, players do n = n + 1 end
+                                if role == 'tank'   then tankCount   = n end
+                                if role == 'healer' then healerCount = n end
+                                if role == 'damage' then dmgCount    = n end
+                            end
                         end
+                        LFG.dungeonsSpamDisplay[data.code] = {
+                            tank   = tankCount,
+                            healer = healerCount,
+                            damage = dmgCount
+                        }
                     end
-                    LFG.dungeonsSpamDisplay[data.code] = {
-                        tank   = tankCount,
-                        healer = healerCount,
-                        damage = dmgCount
-                    }
-                    -- reset myRole
+                end
+                for dungeon, data in next, LFG.dungeons do
+                    -- reset myRole for active dungeon table only
                     if LFG.groupFullCode == '' and not LFG.inGroup then
                         LFG.dungeons[dungeon].myRole = ''
                     end
@@ -331,6 +336,25 @@ LFGGoingWithPicker:SetScript("OnUpdate", function()
         LFGGoingWithPicker.priority = 0
         LFGGoingWithPicker.dungeon = ''
         LFGGoingWithPicker:Hide()
+    end
+end)
+
+-- Invite timeout: if we sent goingWith but never received the party invite,
+-- clear acceptNextInvite after 60 seconds so the next reset can proceed normally.
+local LFGInviteTimeout = CreateFrame("Frame")
+LFGInviteTimeout:Hide()
+LFGInviteTimeout:SetScript("OnShow", function()
+    this.startTime = GetTime()
+end)
+LFGInviteTimeout:SetScript("OnUpdate", function()
+    if GetTime() - this.startTime >= 60 then
+        if LFG.acceptNextInvite and not LFG.inGroup then
+            lfdebug('LFGInviteTimeout: no invite from ' .. tostring(LFG.onlyAcceptFrom) .. ' after 60s, clearing')
+            LFG.acceptNextInvite = false
+            LFG.onlyAcceptFrom   = ''
+            LFG.foundGroup       = false
+        end
+        LFGInviteTimeout:Hide()
     end
 end)
 
@@ -475,13 +499,37 @@ LFGObjectives:SetScript("OnEvent", function()
     if event then
         if event == "CHAT_MSG_COMBAT_HOSTILE_DEATH" then
             local creatureDied = arg1
-            lfdebug(creatureDied)
-            if LFG.bosses[LFG.groupFullCode] then
-                for _, boss in next, LFG.bosses[LFG.groupFullCode] do
-                    --creatureDied == 'You have slain ' .. boss .. '!'
-                    if creatureDied == boss .. ' dies.' then
-                        LFGObjectives.objectiveComplete(boss)
-                        return true
+            lfdebug('HOSTILE_DEATH: ' .. tostring(creatureDied) .. ' groupFullCode=' .. tostring(LFG.groupFullCode))
+            -- Search all boss tables when groupFullCode is blank (e.g. non-tank players
+            -- whose groupFullCode may not have been set yet).
+            local codesToCheck = {}
+            if LFG.groupFullCode ~= '' then
+                codesToCheck[LFG.groupFullCode] = true
+            else
+                -- Fallback: check every dungeon we are queued for
+                for _, data in next, LFG.dungeons do
+                    if data.queued or LFG.inGroup then
+                        codesToCheck[data.code] = true
+                    end
+                end
+            end
+            for code, _ in next, codesToCheck do
+                if LFG.bosses[code] then
+                    for _, boss in next, LFG.bosses[code] do
+                        -- Strip the '-s' suffix used on brdarena summoned bosses
+                        local bossName = string.gsub(boss, '%-s$', '')
+                        -- Handle both kill formats:
+                        -- "Boss dies."        = party member landed killing blow
+                        -- "You have slain Boss!" = you landed killing blow
+                        if creatureDied == bossName .. ' dies.' or
+                           creatureDied == 'You have slain ' .. bossName .. '!' then
+                            -- Make sure groupFullCode is set so objectiveComplete works
+                            if LFG.groupFullCode == '' then
+                                LFG.groupFullCode = code
+                            end
+                            LFGObjectives.objectiveComplete(boss)
+                            return true
+                        end
                     end
                 end
             end
@@ -503,7 +551,7 @@ LFGFillAvailableDungeonsDelay:SetScript("OnHide", function()
         LFG.fillAvailableDungeons(LFGFillAvailableDungeonsDelay.queueAfterIfPossible)
         LFGFillAvailableDungeonsDelay.triggers = LFGFillAvailableDungeonsDelay.triggers + 1
     else
-        --lferror('Error occurred at LFGFillAvailableDungeonsDelay triggers = 10. Please report this to Bennylava.')
+        --lferror('Error occurred at LFGFillAvailableDungeonsDelay triggers = 10. Please report this to Zaenith.')
     end
 end)
 LFGFillAvailableDungeonsDelay:SetScript("OnUpdate", function()
@@ -860,15 +908,22 @@ LFGComms:SetScript("OnEvent", function()
                 end
             end
             if string.sub(arg2, 1, 11) == 'LFGVersion:' and arg4 ~= me then
+                local verEx = StringSplit(arg2, ':')
+                local theirVer = verEx[2]
                 if not LFG.showedUpdateNotification then
-                    local verEx = StringSplit(arg2, ':')
-                    if LFG.ver(verEx[2]) > LFG.ver(addonVer) then
+                    if LFG.ver(theirVer) > LFG.ver(addonVer) then
                         lfprint(COLOR_HUNTER .. 'Looking For Group ' .. COLOR_WHITE .. ' - new version available ' ..
-                                COLOR_GREEN .. 'v' .. verEx[2] .. COLOR_WHITE .. ' (current version ' ..
+                                COLOR_GREEN .. 'v' .. theirVer .. COLOR_WHITE .. ' (current version ' ..
                                 COLOR_ORANGE .. 'v' .. addonVer .. COLOR_WHITE .. ')')
-                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
+                        lfprint('Update yours at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG/')
                         LFG.showedUpdateNotification = true
                     end
+                end
+                -- Nudge outdated players once per session. We reuse the existing
+                -- LFGVersion: message so their handler fires even on old versions.
+                if LFG.ver(theirVer) < LFG.ver(addonVer) and not LFG.WarnedPlayers[arg4] then
+                    LFG.WarnedPlayers[arg4] = true
+                    ChatThrottleLib:SendAddonMessage('BULK', LFG_ADDON_CHANNEL, 'LFGVersion:' .. addonVer, 'WHISPER', arg4, 'LFG_nudge')
                 end
             end
 
@@ -1215,6 +1270,7 @@ LFGComms:SetScript("OnEvent", function()
             if LFG.acceptNextInvite and arg1 == LFG.onlyAcceptFrom then
                 StaticPopup_Hide("PARTY_INVITE")
                 LFG.acceptNextInvite  = false
+                LFGInviteTimeout:Hide()
                 LFG.pendingInviteFrom = arg1
                 local mDungeon    = (LFG.groupFullCode ~= '' and LFG.groupFullCode)
                                  or (LFG.LFMDungeonCode ~= '' and LFG.LFMDungeonCode)
@@ -1244,6 +1300,7 @@ LFGComms:SetScript("OnEvent", function()
                 end
                 _G['LFGGroupReadyAwesome']:SetText('Accept')
                 _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+                _G['LFGGroupReadyAwesome']:Enable()
                 _G['LFGGroupReadyNotCool']:SetText('Decline')
                 _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
                 _G['LFGGroupReady']:Show()
@@ -1279,7 +1336,7 @@ LFGComms:SetScript("OnEvent", function()
             if LFG_CONFIG['spamChat'] then
                 lfnotice(LFG.dungeonNameFromCode(code) .. ' group just formed. (type "/lfg spam" to disable this message)')
             end
-            if me == 'Bennylava' then
+            if me == 'Zaenith' then
                 local totalGroups = 0
                 for _, number in next, LFG_FORMED_GROUPS do
                     if number ~= 0 then
@@ -1388,9 +1445,15 @@ LFGComms:SetScript("OnEvent", function()
                                 ' Ask them to update at ' .. COLOR_HUNTER .. 'https://github.com/thezephyrsong/LFG')
                     end
                 end
+                -- Nudge outdated players seen on meLFG: (covers all queuing players,
+                -- not just those who broadcast LFGVersion:).
+                if LFG.ver(ver) < LFG.ver(addonVer) and not LFG.WarnedPlayers[arg2] then
+                    LFG.WarnedPlayers[arg2] = true
+                    ChatThrottleLib:SendAddonMessage('BULK', LFG_ADDON_CHANNEL, 'LFGVersion:' .. addonVer, 'WHISPER', arg2, 'LFG_nudge')
+                end
                 if LFGWhoCounter.listening then
                     LFGWhoCounter.people = LFGWhoCounter.people + 1
-                    if me == 'Bennylava' then
+                    if me == 'Zaenith' then
                         local color = COLOR_GREEN
                         if LFG.ver(ver) < LFG.ver(addonVer) then
                             color = COLOR_ORANGE
@@ -1608,6 +1671,8 @@ LFGComms:SetScript("OnEvent", function()
                                 lfdebug('myRole for ' .. mDungeon .. ' set to ' .. mRole)
                                 LFG.onlyAcceptFrom   = arg2
                                 LFG.acceptNextInvite = true
+                                LFGInviteTimeout:Hide()
+                                LFGInviteTimeout:Show()
                                 lfdebug('found: waiting for invite from ' .. arg2 .. ' as ' .. mRole .. ' in ' .. mDungeon)
                             end
                         end
@@ -1643,7 +1708,7 @@ LFGComms:SetScript("OnEvent", function()
             end
 
             if string.sub(arg1, 1, 10) == 'goingWith:' and
-                    (string.find(LFG_ROLE, 'tank', 1, true) or LFG.isLeader) then
+                    (string.find(LFG_ROLE, 'tank', 1, true) or LFG.isLeader or LFG.crLeader) then
 
                 local withEx = StringSplit(arg1, ':')
                 local leader = withEx[2]
@@ -1679,6 +1744,33 @@ LFGComms:SetScript("OnEvent", function()
                             LFG.addDamage(mDungeon, arg2, true, true)
                         end
                         LFG.inviteInLFMGroup(arg2)
+                    end
+                end
+                -- CR leader path: same as isLeader but for virtual CR leadership
+                if LFG.crLeader and leader == me then
+                    if LFG.isNeededInLFMGroup(mRole, arg2, mDungeon) then
+                        if mRole == 'tank' then
+                            LFG.addTank(mDungeon, arg2, true, true)
+                        end
+                        if mRole == 'healer' then
+                            LFG.addHealer(mDungeon, arg2, true, true)
+                        end
+                        if mRole == 'damage' then
+                            LFG.addDamage(mDungeon, arg2, true, true)
+                        end
+                        LFG.inviteInLFMGroup(arg2)
+                    end
+                end
+                -- Solo-queue tank path: we sent found: but are not yet party leader
+                -- (no party exists yet). When a healer/damage responds with goingWith:us,
+                -- slot them into our group table so checkGroupFull can fire correctly.
+                if not LFG.isLeader and leader == me and string.find(LFG_ROLE, 'tank', 1, true) then
+                    lfdebug('goingWith: solo tank path - slotting ' .. arg2 .. ' as ' .. mRole .. ' in ' .. mDungeon)
+                    if mRole == 'healer' then
+                        LFG.addHealer(mDungeon, arg2, false, true)
+                    end
+                    if mRole == 'damage' then
+                        LFG.addDamage(mDungeon, arg2, false, true)
                     end
                 end
                 if LFG.confirmPending and LFG.confirmDungeon == mDungeon and _G['LFGGroupReady']:IsVisible() and LFG.confirmPending then
@@ -1933,17 +2025,28 @@ LFG:SetScript("OnEvent", function()
             lfdebug('PARTY_MEMBERS_CHANGED') --check -- triggers in raids too
             DungeonListFrame_Update()
 
-            if not LFG.inGroup then
-                LFG.currentGroupSize = 1
-            end
-            lfdebug('joined' .. GetNumPartyMembers() + 1 .. ' > ' .. LFG.currentGroupSize)
-            lfdebug('left' .. GetNumPartyMembers() + 1 .. ' < ' .. LFG.currentGroupSize)
-
-            local someoneJoined = GetNumPartyMembers() + 1 > LFG.currentGroupSize
-            local someoneLeft = GetNumPartyMembers() + 1 < LFG.currentGroupSize
-
-            LFG.currentGroupSize = GetNumPartyMembers() + 1
+            -- Snapshot the previous group size BEFORE updating inGroup or
+            -- resetting currentGroupSize, so the delta comparison is accurate.
+            -- The old code reset currentGroupSize to 1 whenever inGroup was
+            -- false (stale), which made joined/left always false for the first
+            -- PARTY_MEMBERS_CHANGED after forming a group.
+            local prevGroupSize = LFG.currentGroupSize
+            local newGroupSize  = GetNumPartyMembers() + 1
             LFG.inGroup = GetNumRaidMembers() == 0 and GetNumPartyMembers() > 0
+
+            -- Only reset the baseline to 1 when we know we are truly solo
+            -- (inGroup now reflects the current state).
+            if not LFG.inGroup then
+                prevGroupSize = 1
+            end
+
+            lfdebug('joined' .. newGroupSize .. ' > ' .. prevGroupSize)
+            lfdebug('left'   .. newGroupSize .. ' < ' .. prevGroupSize)
+
+            local someoneJoined = newGroupSize > prevGroupSize
+            local someoneLeft   = newGroupSize < prevGroupSize
+
+            LFG.currentGroupSize = newGroupSize
 
             BrowseDungeonListFrame_Update()
 
@@ -2176,13 +2279,18 @@ LFG:SetScript("OnEvent", function()
                 LFG.sendMinimapDataToParty(LFG.LFMDungeonCode)
             end
             -- update awesome button enabled if 5/5 disabled + text if not
-            local awesomeButton = _G['LFGGroupReadyAwesome']
-            awesomeButton:SetText('Waiting Players (' .. LFG.groupSizeMax - GetNumPartyMembers() - 1 .. ')')
-            awesomeButton:Disable()
+            -- Skip this when confirm-mode is active: the button already says
+            -- "Accept" and is wired to LFGGroupConfirm_Accept; overwriting it
+            -- here would grey it out and break the accept flow.
+            if not LFG.confirmPending then
+                local awesomeButton = _G['LFGGroupReadyAwesome']
+                awesomeButton:SetText('Waiting Players (' .. LFG.groupSizeMax - GetNumPartyMembers() - 1 .. ')')
+                awesomeButton:Disable()
 
-            if GetNumPartyMembers() == LFG.groupSizeMax - 1 then
-                awesomeButton:SetText('Let\'s do this!')
-                awesomeButton:Enable()
+                if GetNumPartyMembers() == LFG.groupSizeMax - 1 then
+                    awesomeButton:SetText('Let\'s do this!')
+                    awesomeButton:Enable()
+                end
             end
             lfdebug(' end PARTY_MEMBERS_CHANGED')
         end
@@ -2363,21 +2471,27 @@ function LFG.init()
 	    LFG.hideButtonTextures("RoleDamageTooltipButton")
 	end
 
-    for dungeon, data in next, LFG.dungeons do
-        if not LFG.dungeonsSpam[data.code] then
-            LFG.dungeonsSpam[data.code] = {
-                tank = 0,
-                healer = 0,
-                damage = 0
-            }
-        end
-        if not LFG.dungeonsSpamDisplay[data.code] then
-            LFG.dungeonsSpamDisplay[data.code] = {
-                tank = 0,
-                healer = 0,
-                damage = 0
-            }
-            LFG.dungeonsSpamDisplayLFM[data.code] = 0
+    -- Seed spam tables for ALL dungeon tables, not just the active one.
+    -- eliteEncounters codes (e.g. silithusd) arrive on the channel regardless
+    -- of which tab is active, so they must be initialised up front.
+    local allTables = { LFG.allDungeons, LFG.eliteEncounters }
+    for _, tbl in ipairs(allTables) do
+        for dungeon, data in next, tbl do
+            if not LFG.dungeonsSpam[data.code] then
+                LFG.dungeonsSpam[data.code] = {
+                    tank = 0,
+                    healer = 0,
+                    damage = 0
+                }
+            end
+            if not LFG.dungeonsSpamDisplay[data.code] then
+                LFG.dungeonsSpamDisplay[data.code] = {
+                    tank = 0,
+                    healer = 0,
+                    damage = 0
+                }
+                LFG.dungeonsSpamDisplayLFM[data.code] = 0
+            end
         end
     end
 end
@@ -2427,7 +2541,11 @@ LFGQueue:SetScript("OnUpdate", function()
                 lfm = false,
                 checkGroupFull = false
             }
-            if not LFG.inGroup then
+            -- Don't reset while we're waiting for an invite: acceptNextInvite
+            -- means we already responded to a found: and the invite is in flight.
+            -- Resetting here would clear onlyAcceptFrom and cause the invite to
+            -- be silently ignored when it arrives.
+            if not LFG.inGroup and not LFG.acceptNextInvite then
                 LFG.resetGroup()
             end
         end
@@ -3969,13 +4087,6 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
     LFG.crCheckElection()
 end
 
-function LFG.deQueueAll()
-    for dungeon, data in next, LFG.dungeons do
-        if data.queued then
-            LFG.dungeons[dungeon].queued = false
-        end
-    end
-end
 
 function LFG.resetFormedGroups()
     LFG_FORMED_GROUPS = {}
@@ -4026,9 +4137,6 @@ function LFG.readyStatusReset()
     _G['LFGReadyStatusReadyDamage3']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
 end
 
-function test_dung_ob(code)
-    LFG.showDungeonObjectives(code)
-end
 
 function LFG.showDungeonObjectives(code, numObjectivesComplete)
 
@@ -4571,9 +4679,6 @@ function checkRoleCompatibility(role)
     end
 end
 
-function lfg_replace(s, c, cc)
-    return (string.gsub(s, c, cc))
-end
 
 function acceptRole()
 
@@ -5401,7 +5506,7 @@ SlashCmdList["LFG"] = function(cmd)
             end
         end
         if string.sub(cmd, 1, 3) == 'who' then
-            if me ~= 'Bennylava' then
+            if me ~= 'Zaenith' then
                 return false
             end
             if LFG.channelIndex == 0 then
@@ -5497,6 +5602,7 @@ SlashCmdList["LFG"] = function(cmd)
             end
             _G['LFGGroupReadyAwesome']:SetText('Accept')
             _G['LFGGroupReadyAwesome']:SetScript('OnClick', function() LFGGroupConfirm_Accept() end)
+            _G['LFGGroupReadyAwesome']:Enable()
             _G['LFGGroupReadyNotCool']:SetText('Decline')
             _G['LFGGroupReadyNotCool']:SetScript('OnClick', function() LFGGroupConfirm_Decline() end)
             _G['LFGGroupReady']:Show()
@@ -5535,7 +5641,7 @@ function LFG.removeChannelFromWindows()
     if LFG_CONFIG and LFG_CONFIG['debug'] then
         return false
     end
-    if me == 'Bennylava' then
+    if me == 'Zaenith' then
         return false
     end
 
