@@ -4087,6 +4087,13 @@ function LFG.removePlayerFromVirtualParty(name, mRole)
     LFG.crCheckElection()
 end
 
+function LFG.deQueueAll()
+    for dungeon, data in next, LFG.dungeons do
+        if data.queued then
+            LFG.dungeons[dungeon].queued = false
+        end
+    end
+end
 
 function LFG.resetFormedGroups()
     LFG_FORMED_GROUPS = {}
@@ -4137,6 +4144,9 @@ function LFG.readyStatusReset()
     _G['LFGReadyStatusReadyDamage3']:SetTexture('Interface\\addons\\LFG\\images\\readycheck-waiting')
 end
 
+function test_dung_ob(code)
+    LFG.showDungeonObjectives(code)
+end
 
 function LFG.showDungeonObjectives(code, numObjectivesComplete)
 
@@ -4679,6 +4689,9 @@ function checkRoleCompatibility(role)
     end
 end
 
+function lfg_replace(s, c, cc)
+    return (string.gsub(s, c, cc))
+end
 
 function acceptRole()
 
